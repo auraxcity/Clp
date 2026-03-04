@@ -64,28 +64,70 @@ export default function ApplyForLoanPage() {
     try {
       const db = getDb();
       
+      // Try to get borrower doc
       const borrowerDoc = await getDoc(doc(db, 'borrowers', uid));
       if (borrowerDoc.exists()) {
         setBorrower({ id: borrowerDoc.id, ...borrowerDoc.data() } as Borrower);
+      } else {
+        // If no borrower doc, try to get user doc and create borrower
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+          const userData = userDoc.data();
+          // Create a temporary borrower object from user data
+          setBorrower({
+            id: uid,
+            userId: uid,
+            fullName: userData.fullName || 'User',
+            phone: userData.phone || '',
+            email: userData.email || '',
+            location: userData.location || 'Not specified',
+            riskGrade: 'C',
+            riskScore: 50,
+            totalLoansTaken: 0,
+            totalAmountBorrowed: 0,
+            totalAmountRepaid: 0,
+            numberOfLatePayments: 0,
+            numberOfDefaults: 0,
+            currentActiveLoanBalance: 0,
+            referralCode: userData.referralCode || '',
+            referralEarnings: 0,
+            isBlacklisted: false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as Borrower);
+        }
       }
 
-      const loansQuery = query(
-        collection(db, 'loans'),
-        where('borrowerId', '==', uid),
-        where('status', 'in', ['active', 'due_soon', 'late', 'approved'])
-      );
-      const loansSnapshot = await getDocs(loansQuery);
-      setHasActiveLoan(!loansSnapshot.empty);
+      // Check for active loans
+      try {
+        const loansQuery = query(
+          collection(db, 'loans'),
+          where('borrowerId', '==', uid),
+          where('status', 'in', ['active', 'due_soon', 'late', 'approved'])
+        );
+        const loansSnapshot = await getDocs(loansQuery);
+        setHasActiveLoan(!loansSnapshot.empty);
+      } catch (e) {
+        console.log('No active loans or index not ready');
+        setHasActiveLoan(false);
+      }
 
-      const pendingQuery = query(
-        collection(db, 'loans'),
-        where('borrowerId', '==', uid),
-        where('status', '==', 'pending')
-      );
-      const pendingSnapshot = await getDocs(pendingQuery);
-      setHasPendingApplication(!pendingSnapshot.empty);
+      // Check for pending applications
+      try {
+        const pendingQuery = query(
+          collection(db, 'loans'),
+          where('borrowerId', '==', uid),
+          where('status', '==', 'pending')
+        );
+        const pendingSnapshot = await getDocs(pendingQuery);
+        setHasPendingApplication(!pendingSnapshot.empty);
+      } catch (e) {
+        console.log('No pending applications or index not ready');
+        setHasPendingApplication(false);
+      }
     } catch (error) {
       console.error('Error loading user data:', error);
+      toast.error('Error loading your profile. Please try again.');
     }
   };
 
@@ -104,8 +146,9 @@ export default function ApplyForLoanPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!userId || !borrower) {
+    if (!userId) {
       toast.error('Please login to apply');
+      router.push('/user/login');
       return;
     }
 
@@ -124,6 +167,11 @@ export default function ApplyForLoanPage() {
       return;
     }
 
+    if (!formData.purpose) {
+      toast.error('Please select a loan purpose');
+      return;
+    }
+
     if (!nationalIdFile) {
       toast.error('Please upload your National ID');
       return;
@@ -139,20 +187,44 @@ export default function ApplyForLoanPage() {
     try {
       const db = getDb();
       const storage = getStorageInstance();
+      const auth = getAuthInstance();
+      const currentUser = auth.currentUser;
 
-      let nationalIdUrl = borrower.nationalIdImageUrl || '';
-      let selfieUrl = borrower.selfieUrl || '';
+      if (!currentUser) {
+        toast.error('Session expired. Please login again.');
+        router.push('/user/login');
+        return;
+      }
 
-      if (nationalIdFile) {
+      // Get borrower name and phone from state or user
+      const borrowerName = borrower?.fullName || currentUser.displayName || 'User';
+      const borrowerPhone = borrower?.phone || currentUser.phoneNumber || '';
+
+      let nationalIdUrl = '';
+      let selfieUrl = '';
+
+      // Upload National ID
+      try {
         const nationalIdRef = ref(storage, `kyc/${userId}/national_id_${Date.now()}`);
         await uploadBytes(nationalIdRef, nationalIdFile);
         nationalIdUrl = await getDownloadURL(nationalIdRef);
+      } catch (uploadError) {
+        console.error('National ID upload error:', uploadError);
+        toast.error('Failed to upload National ID. Please try again.');
+        setIsSubmitting(false);
+        return;
       }
 
-      if (selfieFile) {
+      // Upload Selfie
+      try {
         const selfieRef = ref(storage, `kyc/${userId}/selfie_${Date.now()}`);
         await uploadBytes(selfieRef, selfieFile);
         selfieUrl = await getDownloadURL(selfieRef);
+      } catch (uploadError) {
+        console.error('Selfie upload error:', uploadError);
+        toast.error('Failed to upload selfie. Please try again.');
+        setIsSubmitting(false);
+        return;
       }
 
       const dueDate = new Date();
@@ -160,21 +232,23 @@ export default function ApplyForLoanPage() {
 
       await addDoc(collection(db, 'loans'), {
         borrowerId: userId,
-        borrowerName: borrower.fullName,
-        borrowerPhone: borrower.phone,
+        borrowerName: borrowerName,
+        borrowerPhone: borrowerPhone,
         loanProduct: formData.loanProduct,
         principalAmount: amount,
         interestRate: selectedProduct.interestRate,
         interestAmount: interest,
         processingFee: processingFee,
+        processingFeePaid: false,
         totalPayable: totalPayable,
         outstandingBalance: totalPayable,
+        amountDisbursed: 0,
         disbursementAmount: disbursementAmount,
         loanDate: Timestamp.now(),
         dueDate: Timestamp.fromDate(dueDate),
         status: 'pending',
         purpose: formData.purpose,
-        occupation: formData.occupation,
+        occupation: formData.occupation || '',
         monthlyIncome: parseFloat(formData.monthlyIncome) || 0,
         nationalIdImageUrl: nationalIdUrl,
         selfieUrl: selfieUrl,
