@@ -1,15 +1,32 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useStore } from '@/store/useStore';
-import { Bell, Search, Menu } from 'lucide-react';
+import { Bell, Search, Menu, LogOut } from 'lucide-react';
+import { signOut } from 'firebase/auth';
+import { getAuthInstance } from '@/lib/firebase';
 import { cn } from '@/lib/utils';
+import toast from 'react-hot-toast';
 
 export function Header() {
+  const router = useRouter();
   const { sidebarOpen, notifications, user } = useStore();
   const [showNotifications, setShowNotifications] = useState(false);
   
   const unreadCount = notifications.filter(n => !n.isRead).length;
+
+  const handleLogout = async () => {
+    try {
+      const auth = getAuthInstance();
+      await signOut(auth);
+      toast.success('Logged out successfully');
+      router.push('/login');
+    } catch (error) {
+      console.error('Logout error:', error);
+      toast.error('Failed to logout');
+    }
+  };
 
   return (
     <header
@@ -93,6 +110,16 @@ export function Header() {
             <span className="text-xs text-gray-600">Active Loans:</span>
             <span className="text-sm font-semibold text-[#00A86B]">0</span>
           </div>
+
+          {/* Logout Button */}
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 py-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+            title="Logout"
+          >
+            <LogOut className="h-5 w-5" />
+            <span className="hidden md:inline text-sm font-medium">Logout</span>
+          </button>
         </div>
       </div>
     </header>

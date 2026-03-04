@@ -25,10 +25,16 @@ import toast, { Toaster } from 'react-hot-toast';
 export default function HomePage() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
+  const [isApplyLoading, setIsApplyLoading] = useState(false);
 
   const handleAdminLogin = () => {
     setIsLoading(true);
     router.push('/login');
+  };
+
+  const handleApplyForLoan = () => {
+    setIsApplyLoading(true);
+    router.push('/user/login');
   };
 
   return (
@@ -81,12 +87,12 @@ export default function HomePage() {
               </p>
               
               <div className="mt-8 flex flex-col sm:flex-row gap-4">
-                <Button size="lg" variant="secondary" onClick={handleAdminLogin}>
+                <Button size="lg" variant="secondary" onClick={handleApplyForLoan} isLoading={isApplyLoading}>
                   Apply for a Loan
                   <ArrowRight className="h-5 w-5 ml-2" />
                 </Button>
-                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10">
-                  Learn More
+                <Button size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10" onClick={() => router.push('/user/signup')}>
+                  Create Account
                 </Button>
               </div>
               
@@ -235,7 +241,7 @@ export default function HomePage() {
                   </li>
                 </ul>
                 
-                <Button variant="outline" className="w-full" onClick={handleAdminLogin}>
+                <Button variant="outline" className="w-full" onClick={handleApplyForLoan}>
                   Apply Now
                 </Button>
               </div>

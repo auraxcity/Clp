@@ -87,10 +87,17 @@ export interface Loan {
   processingFeePaid: boolean;
   totalPayable: number;
   amountDisbursed: number;
+  disbursementAmount?: number;
   outstandingBalance: number;
   loanDate: Date;
   dueDate: Date;
   status: LoanStatus;
+  purpose?: string;
+  occupation?: string;
+  monthlyIncome?: number;
+  nationalIdImageUrl?: string;
+  selfieUrl?: string;
+  collateralRequired?: boolean;
   collateralType?: string;
   collateralDescription?: string;
   collateralValue?: number;
