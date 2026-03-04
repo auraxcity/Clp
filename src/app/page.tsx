@@ -28,10 +28,7 @@ export default function HomePage() {
 
   const handleAdminLogin = () => {
     setIsLoading(true);
-    setTimeout(() => {
-      router.push('/dashboard');
-      setIsLoading(false);
-    }, 500);
+    router.push('/login');
   };
 
   return (
