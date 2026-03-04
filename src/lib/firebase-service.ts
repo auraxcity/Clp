@@ -42,6 +42,17 @@ function getStorageRef(): FirebaseStorage {
   return getStorageInstance();
 }
 
+// Helper to remove undefined values from objects (Firestore doesn't accept undefined)
+function removeUndefined<T extends Record<string, unknown>>(obj: T): Partial<T> {
+  const result: Partial<T> = {};
+  for (const key in obj) {
+    if (obj[key] !== undefined) {
+      result[key] = obj[key];
+    }
+  }
+  return result;
+}
+
 // Helper to convert Firestore timestamps
 function convertTimestamp(data: DocumentData): DocumentData {
   const converted = { ...data };
@@ -80,8 +91,9 @@ export async function updateUser(id: string, data: Partial<User>): Promise<void>
 
 // ============ BORROWERS ============
 export async function createBorrower(borrowerData: Omit<Borrower, 'id' | 'createdAt' | 'updatedAt'>): Promise<Borrower> {
+  const cleanData = removeUndefined(borrowerData as Record<string, unknown>);
   const docRef = await addDoc(collection(getDb(), 'borrowers'), {
-    ...borrowerData,
+    ...cleanData,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   });
@@ -206,8 +218,9 @@ export async function returnCapitalFromLoan(investorId: string, principal: numbe
 
 // ============ LOANS ============
 export async function createLoan(loanData: Omit<Loan, 'id' | 'createdAt' | 'updatedAt'>): Promise<Loan> {
+  const cleanData = removeUndefined(loanData as Record<string, unknown>);
   const docRef = await addDoc(collection(getDb(), 'loans'), {
-    ...loanData,
+    ...cleanData,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   });
@@ -795,8 +808,9 @@ export async function uploadKYCDocument(file: File, borrowerId: string, docType:
 
 // ============ LOAN APPLICATIONS ============
 export async function createLoanApplication(data: Omit<LoanApplication, 'id' | 'createdAt' | 'updatedAt'>): Promise<LoanApplication> {
+  const cleanData = removeUndefined(data as Record<string, unknown>);
   const docRef = await addDoc(collection(getDb(), 'loanApplications'), {
-    ...data,
+    ...cleanData,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   });
