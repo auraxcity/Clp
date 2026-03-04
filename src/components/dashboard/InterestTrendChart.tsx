@@ -70,7 +70,7 @@ export function InterestTrendChart({ data }: InterestTrendChartProps) {
               axisLine={{ stroke: '#e5e7eb' }}
             />
             <Tooltip
-              formatter={(value: number) => [`UGX ${value.toLocaleString()}`, '']}
+              formatter={(value) => typeof value === 'number' ? [`UGX ${value.toLocaleString()}`, ''] : value}
               contentStyle={{
                 backgroundColor: '#fff',
                 border: '1px solid #e5e7eb',

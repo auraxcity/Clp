@@ -1,7 +1,7 @@
-import { initializeApp, getApps } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import { getStorage } from 'firebase/storage';
+import { initializeApp, getApps, FirebaseApp } from 'firebase/app';
+import { getFirestore, Firestore } from 'firebase/firestore';
+import { getAuth, Auth } from 'firebase/auth';
+import { getStorage, FirebaseStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,9 +12,64 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+let app: FirebaseApp | undefined;
+let _db: Firestore | undefined;
+let _auth: Auth | undefined;
+let _storage: FirebaseStorage | undefined;
+let initialized = false;
 
-export const db = getFirestore(app);
-export const auth = getAuth(app);
-export const storage = getStorage(app);
+function initFirebase() {
+  if (initialized) return;
+  if (typeof window === 'undefined') return;
+  
+  if (!firebaseConfig.apiKey) {
+    console.warn('Firebase config not found. Please set environment variables.');
+    return;
+  }
+  
+  try {
+    if (getApps().length === 0) {
+      app = initializeApp(firebaseConfig);
+    } else {
+      app = getApps()[0];
+    }
+    
+    _db = getFirestore(app);
+    _auth = getAuth(app);
+    _storage = getStorage(app);
+    initialized = true;
+  } catch (error) {
+    console.error('Firebase initialization error:', error);
+  }
+}
+
+export const db = new Proxy({} as Firestore, {
+  get(_, prop) {
+    initFirebase();
+    if (!_db) throw new Error('Firebase Firestore not initialized');
+    return (_db as unknown as Record<string, unknown>)[prop as string];
+  }
+});
+
+export const auth = new Proxy({} as Auth, {
+  get(_, prop) {
+    initFirebase();
+    if (!_auth) throw new Error('Firebase Auth not initialized');
+    return (_auth as unknown as Record<string, unknown>)[prop as string];
+  }
+});
+
+export const storage = new Proxy({} as FirebaseStorage, {
+  get(_, prop) {
+    initFirebase();
+    if (!_storage) throw new Error('Firebase Storage not initialized');
+    return (_storage as unknown as Record<string, unknown>)[prop as string];
+  }
+});
+
+export function getFirebaseApp() {
+  initFirebase();
+  return app;
+}
+
 export default app;

@@ -62,7 +62,7 @@ export function LoanStatusChart({
               ))}
             </Pie>
             <Tooltip 
-              formatter={(value: number) => [value, 'Loans']}
+              formatter={(value) => typeof value === 'number' ? [value, 'Loans'] : value}
               contentStyle={{
                 backgroundColor: '#fff',
                 border: '1px solid #e5e7eb',

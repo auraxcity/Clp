@@ -15,8 +15,9 @@ import {
   increment,
   onSnapshot,
   DocumentData,
+  Firestore,
 } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, FirebaseStorage } from 'firebase/storage';
 import { db, storage } from './firebase';
 import {
   Borrower,
@@ -32,6 +33,20 @@ import {
 } from '@/types';
 import { v4 as uuidv4 } from 'uuid';
 import { calculateRiskScore, calculateProfitSplit, calculatePenalty, classifyLoanStatus } from './utils';
+
+function getDb(): Firestore {
+  if (!db) {
+    throw new Error('Firebase not initialized. Please configure environment variables.');
+  }
+  return db;
+}
+
+function getStorageRef(): FirebaseStorage {
+  if (!storage) {
+    throw new Error('Firebase Storage not initialized. Please configure environment variables.');
+  }
+  return storage;
+}
 
 // Helper to convert Firestore timestamps
 function convertTimestamp(data: DocumentData): DocumentData {

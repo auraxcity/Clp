@@ -132,8 +132,9 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
 
   const selectedProduct = LOAN_PRODUCTS[watchedProduct as LoanProduct];
   const amount = parseInt(watchedAmount) || 0;
+  const collateralThreshold = 'collateralThreshold' in selectedProduct ? selectedProduct.collateralThreshold : undefined;
   const needsCollateral = selectedProduct?.collateralRequired || 
-    (selectedProduct?.collateralThreshold && amount > selectedProduct.collateralThreshold);
+    (collateralThreshold && amount > collateralThreshold);
 
   const onSubmit = async (data: LoanFormData) => {
     const amount = parseInt(data.principalAmount);

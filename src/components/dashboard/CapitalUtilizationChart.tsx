@@ -66,7 +66,7 @@ export function CapitalUtilizationChart({
                   width={70}
                 />
                 <Tooltip
-                  formatter={(value: number) => [`UGX ${value.toLocaleString()}`, '']}
+                  formatter={(value) => typeof value === 'number' ? [`UGX ${value.toLocaleString()}`, ''] : value}
                   contentStyle={{
                     backgroundColor: '#fff',
                     border: '1px solid #e5e7eb',

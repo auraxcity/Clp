@@ -308,7 +308,7 @@ export default function AnalyticsPage() {
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
                     <XAxis dataKey="month" tick={{ fontSize: 12 }} />
                     <YAxis tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} tick={{ fontSize: 12 }} />
-                    <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                    <Tooltip formatter={(value) => typeof value === 'number' ? formatCurrency(value) : value} />
                     <Area
                       type="monotone"
                       dataKey="disbursed"
@@ -348,7 +348,7 @@ export default function AnalyticsPage() {
                       cy="50%"
                       outerRadius={80}
                       dataKey="value"
-                      label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                      label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                     >
                       {riskGradeDistribution.map((entry, index) => (
                         <Cell key={`cell-${index}`} fill={entry.color} />
