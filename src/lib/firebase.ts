@@ -12,64 +12,42 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
 };
 
-let app: FirebaseApp | undefined;
-let _db: Firestore | undefined;
-let _auth: Auth | undefined;
-let _storage: FirebaseStorage | undefined;
-let initialized = false;
+let app: FirebaseApp;
+let db: Firestore;
+let auth: Auth;
+let storage: FirebaseStorage;
 
-function initFirebase() {
-  if (initialized) return;
-  if (typeof window === 'undefined') return;
-  
-  if (!firebaseConfig.apiKey) {
-    console.warn('Firebase config not found. Please set environment variables.');
-    return;
-  }
-  
-  try {
+function getFirebaseApp(): FirebaseApp {
+  if (!app) {
     if (getApps().length === 0) {
       app = initializeApp(firebaseConfig);
     } else {
       app = getApps()[0];
     }
-    
-    _db = getFirestore(app);
-    _auth = getAuth(app);
-    _storage = getStorage(app);
-    initialized = true;
-  } catch (error) {
-    console.error('Firebase initialization error:', error);
   }
-}
-
-export const db = new Proxy({} as Firestore, {
-  get(_, prop) {
-    initFirebase();
-    if (!_db) throw new Error('Firebase Firestore not initialized');
-    return (_db as unknown as Record<string, unknown>)[prop as string];
-  }
-});
-
-export const auth = new Proxy({} as Auth, {
-  get(_, prop) {
-    initFirebase();
-    if (!_auth) throw new Error('Firebase Auth not initialized');
-    return (_auth as unknown as Record<string, unknown>)[prop as string];
-  }
-});
-
-export const storage = new Proxy({} as FirebaseStorage, {
-  get(_, prop) {
-    initFirebase();
-    if (!_storage) throw new Error('Firebase Storage not initialized');
-    return (_storage as unknown as Record<string, unknown>)[prop as string];
-  }
-});
-
-export function getFirebaseApp() {
-  initFirebase();
   return app;
 }
 
-export default app;
+export function getDb(): Firestore {
+  if (!db) {
+    db = getFirestore(getFirebaseApp());
+  }
+  return db;
+}
+
+export function getAuthInstance(): Auth {
+  if (!auth) {
+    auth = getAuth(getFirebaseApp());
+  }
+  return auth;
+}
+
+export function getStorageInstance(): FirebaseStorage {
+  if (!storage) {
+    storage = getStorage(getFirebaseApp());
+  }
+  return storage;
+}
+
+export { getFirebaseApp };
+export default app!;

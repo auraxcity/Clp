@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import { getAuthInstance } from '@/lib/firebase';
 import { Shield, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import Link from 'next/link';
@@ -28,6 +28,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
+      const auth = getAuthInstance();
       await signInWithEmailAndPassword(auth, email, password);
       toast.success('Login successful!');
       router.push('/dashboard');

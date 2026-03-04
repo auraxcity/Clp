@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { getAuthInstance, getDb } from '@/lib/firebase';
 import { Shield, Check, AlertCircle } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -27,6 +27,9 @@ export default function SetupPage() {
     setIsLoading(true);
 
     try {
+      const auth = getAuthInstance();
+      const db = getDb();
+      
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         'twinemugabe@gmail.com',

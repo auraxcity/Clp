@@ -18,7 +18,7 @@ import {
   Firestore,
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, FirebaseStorage } from 'firebase/storage';
-import { db, storage } from './firebase';
+import { getDb as getFirebaseDb, getStorageInstance } from './firebase';
 import {
   Borrower,
   Loan,
@@ -35,17 +35,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { calculateRiskScore, calculateProfitSplit, calculatePenalty, classifyLoanStatus } from './utils';
 
 function getDb(): Firestore {
-  if (!db) {
-    throw new Error('Firebase not initialized. Please configure environment variables.');
-  }
-  return db;
+  return getFirebaseDb();
 }
 
 function getStorageRef(): FirebaseStorage {
-  if (!storage) {
-    throw new Error('Firebase Storage not initialized. Please configure environment variables.');
-  }
-  return storage;
+  return getStorageInstance();
 }
 
 // Helper to convert Firestore timestamps
@@ -61,7 +55,7 @@ function convertTimestamp(data: DocumentData): DocumentData {
 
 // ============ USERS ============
 export async function createUser(userData: Omit<User, 'id' | 'createdAt' | 'updatedAt'>): Promise<User> {
-  const docRef = await addDoc(collection(db, 'users'), {
+  const docRef = await addDoc(collection(getDb(), 'users'), {
     ...userData,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
@@ -70,7 +64,7 @@ export async function createUser(userData: Omit<User, 'id' | 'createdAt' | 'upda
 }
 
 export async function getUserByPhone(phone: string): Promise<User | null> {
-  const q = query(collection(db, 'users'), where('phone', '==', phone));
+  const q = query(collection(getDb(), 'users'), where('phone', '==', phone));
   const snapshot = await getDocs(q);
   if (snapshot.empty) return null;
   const doc = snapshot.docs[0];
@@ -78,7 +72,7 @@ export async function getUserByPhone(phone: string): Promise<User | null> {
 }
 
 export async function updateUser(id: string, data: Partial<User>): Promise<void> {
-  await updateDoc(doc(db, 'users', id), {
+  await updateDoc(doc(getDb(), 'users', id), {
     ...data,
     updatedAt: Timestamp.now(),
   });
@@ -86,7 +80,7 @@ export async function updateUser(id: string, data: Partial<User>): Promise<void>
 
 // ============ BORROWERS ============
 export async function createBorrower(borrowerData: Omit<Borrower, 'id' | 'createdAt' | 'updatedAt'>): Promise<Borrower> {
-  const docRef = await addDoc(collection(db, 'borrowers'), {
+  const docRef = await addDoc(collection(getDb(), 'borrowers'), {
     ...borrowerData,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
@@ -95,19 +89,19 @@ export async function createBorrower(borrowerData: Omit<Borrower, 'id' | 'create
 }
 
 export async function getBorrowers(): Promise<Borrower[]> {
-  const q = query(collection(db, 'borrowers'), orderBy('createdAt', 'desc'));
+  const q = query(collection(getDb(), 'borrowers'), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamp(doc.data()) } as Borrower));
 }
 
 export async function getBorrower(id: string): Promise<Borrower | null> {
-  const docSnap = await getDoc(doc(db, 'borrowers', id));
+  const docSnap = await getDoc(doc(getDb(), 'borrowers', id));
   if (!docSnap.exists()) return null;
   return { id: docSnap.id, ...convertTimestamp(docSnap.data()) } as Borrower;
 }
 
 export async function updateBorrower(id: string, data: Partial<Borrower>): Promise<void> {
-  await updateDoc(doc(db, 'borrowers', id), {
+  await updateDoc(doc(getDb(), 'borrowers', id), {
     ...data,
     updatedAt: Timestamp.now(),
   });
@@ -150,7 +144,7 @@ export async function updateBorrowerStats(borrowerId: string): Promise<void> {
 
 // ============ INVESTORS ============
 export async function createInvestor(investorData: Omit<Investor, 'id' | 'createdAt' | 'updatedAt'>): Promise<Investor> {
-  const docRef = await addDoc(collection(db, 'investors'), {
+  const docRef = await addDoc(collection(getDb(), 'investors'), {
     ...investorData,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
@@ -159,19 +153,19 @@ export async function createInvestor(investorData: Omit<Investor, 'id' | 'create
 }
 
 export async function getInvestors(): Promise<Investor[]> {
-  const q = query(collection(db, 'investors'), orderBy('createdAt', 'desc'));
+  const q = query(collection(getDb(), 'investors'), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamp(doc.data()) } as Investor));
 }
 
 export async function getInvestor(id: string): Promise<Investor | null> {
-  const docSnap = await getDoc(doc(db, 'investors', id));
+  const docSnap = await getDoc(doc(getDb(), 'investors', id));
   if (!docSnap.exists()) return null;
   return { id: docSnap.id, ...convertTimestamp(docSnap.data()) } as Investor;
 }
 
 export async function updateInvestor(id: string, data: Partial<Investor>): Promise<void> {
-  await updateDoc(doc(db, 'investors', id), {
+  await updateDoc(doc(getDb(), 'investors', id), {
     ...data,
     updatedAt: Timestamp.now(),
   });
@@ -212,7 +206,7 @@ export async function returnCapitalFromLoan(investorId: string, principal: numbe
 
 // ============ LOANS ============
 export async function createLoan(loanData: Omit<Loan, 'id' | 'createdAt' | 'updatedAt'>): Promise<Loan> {
-  const docRef = await addDoc(collection(db, 'loans'), {
+  const docRef = await addDoc(collection(getDb(), 'loans'), {
     ...loanData,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
@@ -231,20 +225,20 @@ export async function createLoan(loanData: Omit<Loan, 'id' | 'createdAt' | 'upda
 }
 
 export async function getLoans(): Promise<Loan[]> {
-  const q = query(collection(db, 'loans'), orderBy('createdAt', 'desc'));
+  const q = query(collection(getDb(), 'loans'), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamp(doc.data()) } as Loan));
 }
 
 export async function getLoan(id: string): Promise<Loan | null> {
-  const docSnap = await getDoc(doc(db, 'loans', id));
+  const docSnap = await getDoc(doc(getDb(), 'loans', id));
   if (!docSnap.exists()) return null;
   return { id: docSnap.id, ...convertTimestamp(docSnap.data()) } as Loan;
 }
 
 export async function getLoansByBorrower(borrowerId: string): Promise<Loan[]> {
   const q = query(
-    collection(db, 'loans'),
+    collection(getDb(), 'loans'),
     where('borrowerId', '==', borrowerId),
     orderBy('createdAt', 'desc')
   );
@@ -254,7 +248,7 @@ export async function getLoansByBorrower(borrowerId: string): Promise<Loan[]> {
 
 export async function getLoansByInvestor(investorId: string): Promise<Loan[]> {
   const q = query(
-    collection(db, 'loans'),
+    collection(getDb(), 'loans'),
     where('investorId', '==', investorId),
     orderBy('createdAt', 'desc')
   );
@@ -263,7 +257,7 @@ export async function getLoansByInvestor(investorId: string): Promise<Loan[]> {
 }
 
 export async function updateLoan(id: string, data: Partial<Loan>, performedBy?: string): Promise<void> {
-  await updateDoc(doc(db, 'loans', id), {
+  await updateDoc(doc(getDb(), 'loans', id), {
     ...data,
     updatedAt: Timestamp.now(),
   });
@@ -291,9 +285,9 @@ export async function approveLoan(loanId: string, investorId: string, adminId: s
     throw new Error('Insufficient investor capital');
   }
   
-  const batch = writeBatch(db);
+  const batch = writeBatch(getDb());
   
-  batch.update(doc(db, 'loans', loanId), {
+  batch.update(doc(getDb(), 'loans', loanId), {
     status: 'approved',
     investorId,
     investorName: investor.name,
@@ -302,7 +296,7 @@ export async function approveLoan(loanId: string, investorId: string, adminId: s
     updatedAt: Timestamp.now(),
   });
   
-  batch.update(doc(db, 'investors', investorId), {
+  batch.update(doc(getDb(), 'investors', investorId), {
     capitalDeployed: increment(loan.principalAmount),
     capitalAvailable: increment(-loan.principalAmount),
     updatedAt: Timestamp.now(),
@@ -369,7 +363,7 @@ export async function closeLoan(loanId: string): Promise<void> {
 
 export async function updateLoanStatuses(): Promise<void> {
   const loans = await getLoans();
-  const batch = writeBatch(db);
+  const batch = writeBatch(getDb());
   
   for (const loan of loans) {
     if (['closed', 'rejected', 'pending'].includes(loan.status)) continue;
@@ -378,7 +372,7 @@ export async function updateLoanStatuses(): Promise<void> {
     if (newStatus !== loan.status) {
       const { penalty, weeksLate } = calculatePenalty(loan.principalAmount, loan.dueDate);
       
-      batch.update(doc(db, 'loans', loan.id), {
+      batch.update(doc(getDb(), 'loans', loan.id), {
         status: newStatus,
         penaltyAmount: penalty,
         weeksLate,
@@ -392,7 +386,7 @@ export async function updateLoanStatuses(): Promise<void> {
 
 // ============ PAYMENTS ============
 export async function createPayment(paymentData: Omit<Payment, 'id'>): Promise<Payment> {
-  const docRef = await addDoc(collection(db, 'payments'), {
+  const docRef = await addDoc(collection(getDb(), 'payments'), {
     ...paymentData,
   });
   
@@ -409,14 +403,14 @@ export async function createPayment(paymentData: Omit<Payment, 'id'>): Promise<P
 }
 
 export async function getPayments(): Promise<Payment[]> {
-  const q = query(collection(db, 'payments'), orderBy('submittedAt', 'desc'));
+  const q = query(collection(getDb(), 'payments'), orderBy('submittedAt', 'desc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamp(doc.data()) } as Payment));
 }
 
 export async function getPaymentsByLoan(loanId: string): Promise<Payment[]> {
   const q = query(
-    collection(db, 'payments'),
+    collection(getDb(), 'payments'),
     where('loanId', '==', loanId),
     orderBy('submittedAt', 'desc')
   );
@@ -426,7 +420,7 @@ export async function getPaymentsByLoan(loanId: string): Promise<Payment[]> {
 
 export async function getPaymentsByBorrower(borrowerId: string): Promise<Payment[]> {
   const q = query(
-    collection(db, 'payments'),
+    collection(getDb(), 'payments'),
     where('borrowerId', '==', borrowerId),
     orderBy('submittedAt', 'desc')
   );
@@ -436,7 +430,7 @@ export async function getPaymentsByBorrower(borrowerId: string): Promise<Payment
 
 export async function getPendingPayments(): Promise<Payment[]> {
   const q = query(
-    collection(db, 'payments'),
+    collection(getDb(), 'payments'),
     where('status', '==', 'pending'),
     orderBy('submittedAt', 'desc')
   );
@@ -449,7 +443,7 @@ export async function approvePayment(
   adminId: string, 
   adminName: string
 ): Promise<void> {
-  const paymentRef = doc(db, 'payments', paymentId);
+  const paymentRef = doc(getDb(), 'payments', paymentId);
   const paymentSnap = await getDoc(paymentRef);
   
   if (!paymentSnap.exists()) throw new Error('Payment not found');
@@ -459,7 +453,7 @@ export async function approvePayment(
   
   if (!loan) throw new Error('Loan not found');
   
-  const batch = writeBatch(db);
+  const batch = writeBatch(getDb());
   
   batch.update(paymentRef, {
     status: 'approved',
@@ -478,7 +472,7 @@ export async function approvePayment(
     loanUpdate.closedAt = new Date();
   }
   
-  batch.update(doc(db, 'loans', payment.loanId), loanUpdate);
+  batch.update(doc(getDb(), 'loans', payment.loanId), loanUpdate);
   
   await batch.commit();
   
@@ -522,7 +516,7 @@ export async function rejectPayment(
   adminId: string,
   adminName: string
 ): Promise<void> {
-  await updateDoc(doc(db, 'payments', paymentId), {
+  await updateDoc(doc(getDb(), 'payments', paymentId), {
     status: 'rejected',
     rejectedReason: reason,
   });
@@ -539,12 +533,12 @@ export async function rejectPayment(
 
 // ============ NOTIFICATIONS ============
 export async function createNotification(data: Omit<Notification, 'id'>): Promise<void> {
-  await addDoc(collection(db, 'notifications'), data);
+  await addDoc(collection(getDb(), 'notifications'), data);
 }
 
 export async function getNotifications(userId: string): Promise<Notification[]> {
   const q = query(
-    collection(db, 'notifications'),
+    collection(getDb(), 'notifications'),
     where('userId', '==', userId),
     orderBy('createdAt', 'desc'),
     limit(50)
@@ -554,12 +548,12 @@ export async function getNotifications(userId: string): Promise<Notification[]> 
 }
 
 export async function markNotificationRead(id: string): Promise<void> {
-  await updateDoc(doc(db, 'notifications', id), { isRead: true });
+  await updateDoc(doc(getDb(), 'notifications', id), { isRead: true });
 }
 
 // ============ AUDIT LOGS ============
 export async function createAuditLog(data: Omit<AuditLog, 'id' | 'createdAt'>): Promise<void> {
-  await addDoc(collection(db, 'auditLogs'), {
+  await addDoc(collection(getDb(), 'auditLogs'), {
     ...data,
     createdAt: Timestamp.now(),
   });
@@ -569,7 +563,7 @@ export async function getAuditLogs(entityType?: string, entityId?: string): Prom
   let q;
   if (entityType && entityId) {
     q = query(
-      collection(db, 'auditLogs'),
+      collection(getDb(), 'auditLogs'),
       where('entityType', '==', entityType),
       where('entityId', '==', entityId),
       orderBy('createdAt', 'desc'),
@@ -577,7 +571,7 @@ export async function getAuditLogs(entityType?: string, entityId?: string): Prom
     );
   } else {
     q = query(
-      collection(db, 'auditLogs'),
+      collection(getDb(), 'auditLogs'),
       orderBy('createdAt', 'desc'),
       limit(100)
     );
@@ -588,13 +582,13 @@ export async function getAuditLogs(entityType?: string, entityId?: string): Prom
 
 // ============ SYSTEM STATS ============
 export async function getSystemStats(): Promise<SystemStats | null> {
-  const docSnap = await getDoc(doc(db, 'system', 'stats'));
+  const docSnap = await getDoc(doc(getDb(), 'system', 'stats'));
   if (!docSnap.exists()) return null;
   return { id: docSnap.id, ...convertTimestamp(docSnap.data()) } as SystemStats;
 }
 
 export async function initializeSystemStats(): Promise<void> {
-  const statsRef = doc(db, 'system', 'stats');
+  const statsRef = doc(getDb(), 'system', 'stats');
   const existing = await getDoc(statsRef);
   
   if (!existing.exists()) {
@@ -622,7 +616,7 @@ export async function initializeSystemStats(): Promise<void> {
       updatedAt: new Date(),
     };
     
-    await addDoc(collection(db, 'system'), initialStats);
+    await addDoc(collection(getDb(), 'system'), initialStats);
   }
 }
 
@@ -706,7 +700,7 @@ export async function updateSystemStats(): Promise<void> {
     updatedAt: new Date(),
   };
   
-  await updateDoc(doc(db, 'system', 'stats'), stats);
+  await updateDoc(doc(getDb(), 'system', 'stats'), stats);
 }
 
 // ============ MONTHLY REPORTS ============
@@ -770,19 +764,19 @@ export async function generateMonthlyReport(month: string, year: number): Promis
     createdAt: new Date(),
   };
   
-  const docRef = await addDoc(collection(db, 'monthlyReports'), report);
+  const docRef = await addDoc(collection(getDb(), 'monthlyReports'), report);
   return { ...report, id: docRef.id };
 }
 
 export async function getMonthlyReports(): Promise<MonthlyReport[]> {
-  const q = query(collection(db, 'monthlyReports'), orderBy('createdAt', 'desc'));
+  const q = query(collection(getDb(), 'monthlyReports'), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamp(doc.data()) } as MonthlyReport));
 }
 
 // ============ FILE UPLOADS ============
 export async function uploadFile(file: File, path: string): Promise<string> {
-  const storageRef = ref(storage, path);
+  const storageRef = ref(getStorageRef(), path);
   await uploadBytes(storageRef, file);
   return getDownloadURL(storageRef);
 }
@@ -801,7 +795,7 @@ export async function uploadKYCDocument(file: File, borrowerId: string, docType:
 
 // ============ LOAN APPLICATIONS ============
 export async function createLoanApplication(data: Omit<LoanApplication, 'id' | 'createdAt' | 'updatedAt'>): Promise<LoanApplication> {
-  const docRef = await addDoc(collection(db, 'loanApplications'), {
+  const docRef = await addDoc(collection(getDb(), 'loanApplications'), {
     ...data,
     createdAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
@@ -810,13 +804,13 @@ export async function createLoanApplication(data: Omit<LoanApplication, 'id' | '
 }
 
 export async function getLoanApplications(): Promise<LoanApplication[]> {
-  const q = query(collection(db, 'loanApplications'), orderBy('createdAt', 'desc'));
+  const q = query(collection(getDb(), 'loanApplications'), orderBy('createdAt', 'desc'));
   const snapshot = await getDocs(q);
   return snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamp(doc.data()) } as LoanApplication));
 }
 
 export async function updateLoanApplication(id: string, data: Partial<LoanApplication>): Promise<void> {
-  await updateDoc(doc(db, 'loanApplications', id), {
+  await updateDoc(doc(getDb(), 'loanApplications', id), {
     ...data,
     updatedAt: Timestamp.now(),
   });
@@ -824,7 +818,7 @@ export async function updateLoanApplication(id: string, data: Partial<LoanApplic
 
 // ============ REAL-TIME LISTENERS ============
 export function subscribeToStats(callback: (stats: SystemStats) => void): () => void {
-  return onSnapshot(doc(db, 'system', 'stats'), (snapshot) => {
+  return onSnapshot(doc(getDb(), 'system', 'stats'), (snapshot) => {
     if (snapshot.exists()) {
       callback({ id: snapshot.id, ...convertTimestamp(snapshot.data()) } as SystemStats);
     }
@@ -832,7 +826,7 @@ export function subscribeToStats(callback: (stats: SystemStats) => void): () => 
 }
 
 export function subscribeToLoans(callback: (loans: Loan[]) => void): () => void {
-  const q = query(collection(db, 'loans'), orderBy('createdAt', 'desc'));
+  const q = query(collection(getDb(), 'loans'), orderBy('createdAt', 'desc'));
   return onSnapshot(q, (snapshot) => {
     const loans = snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamp(doc.data()) } as Loan));
     callback(loans);
@@ -840,7 +834,7 @@ export function subscribeToLoans(callback: (loans: Loan[]) => void): () => void 
 }
 
 export function subscribeToPayments(callback: (payments: Payment[]) => void): () => void {
-  const q = query(collection(db, 'payments'), orderBy('submittedAt', 'desc'));
+  const q = query(collection(getDb(), 'payments'), orderBy('submittedAt', 'desc'));
   return onSnapshot(q, (snapshot) => {
     const payments = snapshot.docs.map((doc) => ({ id: doc.id, ...convertTimestamp(doc.data()) } as Payment));
     callback(payments);
