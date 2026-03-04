@@ -417,7 +417,7 @@ export default function ApplyForLoanPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   National ID (Front) *
                 </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <label className="block border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-[#00A86B] hover:bg-gray-50 transition-colors">
                   {nationalIdFile ? (
                     <div className="flex items-center justify-center gap-2 text-green-600">
                       <CheckCircle className="h-5 w-5" />
@@ -433,17 +433,16 @@ export default function ApplyForLoanPage() {
                     type="file"
                     accept="image/*"
                     onChange={(e) => setNationalIdFile(e.target.files?.[0] || null)}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    style={{ position: 'relative' }}
+                    className="hidden"
                   />
-                </div>
+                </label>
               </div>
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Selfie Photo *
                 </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <label className="block border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-[#00A86B] hover:bg-gray-50 transition-colors">
                   {selfieFile ? (
                     <div className="flex items-center justify-center gap-2 text-green-600">
                       <CheckCircle className="h-5 w-5" />
@@ -459,10 +458,9 @@ export default function ApplyForLoanPage() {
                     type="file"
                     accept="image/*"
                     onChange={(e) => setSelfieFile(e.target.files?.[0] || null)}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    style={{ position: 'relative' }}
+                    className="hidden"
                   />
-                </div>
+                </label>
               </div>
             </div>
           </Card>

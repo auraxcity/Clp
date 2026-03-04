@@ -349,7 +349,7 @@ export default function PaymentsPage() {
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Payment Proof (Screenshot) *
                 </label>
-                <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                <label className="block border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-[#00A86B] hover:bg-gray-50 transition-colors">
                   {proofFile ? (
                     <div className="flex items-center justify-center gap-2 text-green-600">
                       <CheckCircle className="h-5 w-5" />
@@ -358,17 +358,16 @@ export default function PaymentsPage() {
                   ) : (
                     <div>
                       <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                      <p className="text-sm text-gray-500">Upload screenshot of payment</p>
+                      <p className="text-sm text-gray-500">Click to upload screenshot of payment</p>
                     </div>
                   )}
                   <input
                     type="file"
                     accept="image/*"
                     onChange={(e) => setProofFile(e.target.files?.[0] || null)}
-                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                    style={{ position: 'relative' }}
+                    className="hidden"
                   />
-                </div>
+                </label>
               </div>
             </div>
           </Card>
