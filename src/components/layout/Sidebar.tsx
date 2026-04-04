@@ -14,10 +14,13 @@ import {
   Settings,
   Shield,
   TrendingUp,
-  Bell,
   LogOut,
   ChevronLeft,
   ChevronRight,
+  UserCog,
+  Banknote,
+  AlertTriangle,
+  Database,
 } from 'lucide-react';
 
 const navigation = [
@@ -25,16 +28,24 @@ const navigation = [
   { name: 'Borrowers', href: '/borrowers', icon: Users },
   { name: 'Loans', href: '/loans', icon: Wallet },
   { name: 'Investors', href: '/investors', icon: PiggyBank },
+  { name: 'Investments', href: '/investments', icon: Banknote },
   { name: 'Payments', href: '/payments', icon: CreditCard },
+  { name: 'Defaulted Loans', href: '/defaulted-loans', icon: AlertTriangle },
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Risk Analytics', href: '/analytics', icon: TrendingUp },
   { name: 'Audit Logs', href: '/audit-logs', icon: Shield },
+];
+
+const adminNavigation = [
+  { name: 'Admin Management', href: '/admin-management', icon: UserCog, superAdminOnly: true },
+  { name: 'Database', href: '/database', icon: Database, superAdminOnly: true },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
   const { sidebarOpen, setSidebarOpen, user } = useStore();
+  const isSuperAdmin = user?.role === 'super_admin';
 
   return (
     <aside
@@ -44,7 +55,6 @@ export function Sidebar() {
       )}
     >
       <div className="flex h-full flex-col">
-        {/* Logo */}
         <div className="flex h-16 items-center justify-between px-4 border-b border-white/10">
           {sidebarOpen ? (
             <div className="flex items-center gap-2">
@@ -53,7 +63,7 @@ export function Sidebar() {
               </div>
               <div>
                 <h1 className="font-bold text-lg leading-tight">CLP</h1>
-                <p className="text-xs text-gray-400">Creso&apos;s Loan Plug</p>
+                <p className="text-xs text-gray-400">Admin Portal</p>
               </div>
             </div>
           ) : (
@@ -63,29 +73,60 @@ export function Sidebar() {
           )}
         </div>
 
-        {/* Navigation */}
         <nav className="flex-1 space-y-1 px-3 py-4 overflow-y-auto">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
-                  isActive
-                    ? 'bg-[#00A86B] text-white'
-                    : 'text-gray-300 hover:bg-white/10 hover:text-white'
-                )}
-              >
-                <item.icon className="h-5 w-5 flex-shrink-0" />
-                {sidebarOpen && <span className="text-sm font-medium">{item.name}</span>}
-              </Link>
-            );
-          })}
+          <div className="space-y-1">
+            {navigation.map((item) => {
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
+                    isActive
+                      ? 'bg-[#00A86B] text-white'
+                      : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                  )}
+                >
+                  <item.icon className="h-5 w-5 flex-shrink-0" />
+                  {sidebarOpen && <span className="text-sm font-medium">{item.name}</span>}
+                </Link>
+              );
+            })}
+          </div>
+
+          {sidebarOpen && (
+            <div className="pt-4 mt-4 border-t border-white/10">
+              <p className="px-3 text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                Administration
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-1">
+            {adminNavigation.map((item) => {
+              if (item.superAdminOnly && !isSuperAdmin) return null;
+              
+              const isActive = pathname === item.href || pathname.startsWith(item.href + '/');
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors',
+                    isActive
+                      ? 'bg-[#00A86B] text-white'
+                      : 'text-gray-300 hover:bg-white/10 hover:text-white'
+                  )}
+                >
+                  <item.icon className="h-5 w-5 flex-shrink-0" />
+                  {sidebarOpen && <span className="text-sm font-medium">{item.name}</span>}
+                </Link>
+              );
+            })}
+          </div>
         </nav>
 
-        {/* Toggle Button */}
         <button
           onClick={() => setSidebarOpen(!sidebarOpen)}
           className="absolute -right-3 top-20 h-6 w-6 rounded-full bg-[#0A1F44] border-2 border-white/20 flex items-center justify-center hover:bg-[#00A86B] transition-colors"
@@ -97,11 +138,13 @@ export function Sidebar() {
           )}
         </button>
 
-        {/* User Section */}
         <div className="border-t border-white/10 p-4">
           {sidebarOpen ? (
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-full bg-[#00A86B] flex items-center justify-center">
+              <div className={cn(
+                "h-10 w-10 rounded-full flex items-center justify-center",
+                isSuperAdmin ? 'bg-purple-600' : 'bg-[#00A86B]'
+              )}>
                 <span className="text-white font-semibold">
                   {user?.fullName?.charAt(0) || 'A'}
                 </span>
@@ -111,7 +154,7 @@ export function Sidebar() {
                   {user?.fullName || 'Admin User'}
                 </p>
                 <p className="text-xs text-gray-400 truncate">
-                  {user?.role || 'Super Admin'}
+                  {isSuperAdmin ? 'Super Admin' : 'Admin'}
                 </p>
               </div>
               <button className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
@@ -120,7 +163,10 @@ export function Sidebar() {
             </div>
           ) : (
             <div className="flex justify-center">
-              <div className="h-10 w-10 rounded-full bg-[#00A86B] flex items-center justify-center">
+              <div className={cn(
+                "h-10 w-10 rounded-full flex items-center justify-center",
+                isSuperAdmin ? 'bg-purple-600' : 'bg-[#00A86B]'
+              )}>
                 <span className="text-white font-semibold">
                   {user?.fullName?.charAt(0) || 'A'}
                 </span>

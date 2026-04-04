@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { MERCHANT_CODES, LOAN_PRODUCTS } from '@/types';
+import { MERCHANT_CODES, LOAN_PRODUCTS, LOAN_DURATIONS } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 import { 
   Shield, 
@@ -21,16 +21,11 @@ import {
   Star,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+import { InstallAppButton } from '@/components/InstallAppButton';
 
 export default function HomePage() {
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
   const [isApplyLoading, setIsApplyLoading] = useState(false);
-
-  const handleAdminLogin = () => {
-    setIsLoading(true);
-    router.push('/login');
-  };
 
   const handleApplyForLoan = () => {
     setIsApplyLoading(true);
@@ -41,7 +36,6 @@ export default function HomePage() {
     <div className="min-h-screen bg-white">
       <Toaster position="top-right" />
       
-      {/* Header */}
       <header className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -61,15 +55,15 @@ export default function HomePage() {
               <a href="#contact" className="text-sm text-gray-600 hover:text-[#0A1F44] transition-colors">Contact</a>
             </nav>
             
-            <Button onClick={handleAdminLogin} isLoading={isLoading}>
-              Admin Portal
-              <ArrowRight className="h-4 w-4 ml-2" />
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button variant="outline" onClick={() => router.push('/user/login')} className="border-[#0A1F44] text-[#0A1F44] hover:bg-[#0A1F44] hover:text-white">
+                Borrower Login
+              </Button>
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Hero Section */}
       <section className="pt-32 pb-20 bg-gradient-to-br from-[#0A1F44] via-[#0A1F44] to-[#0A1F44]/90">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
@@ -96,19 +90,13 @@ export default function HomePage() {
                 </Button>
               </div>
               
-              <div className="mt-12 grid grid-cols-3 gap-8">
-                <div>
-                  <p className="text-3xl font-bold text-[#D4AF37]">24hrs</p>
-                  <p className="text-sm text-gray-400">Quick Disbursement</p>
-                </div>
-                <div>
-                  <p className="text-3xl font-bold text-[#00A86B]">40%</p>
-                  <p className="text-sm text-gray-400">Monthly Interest</p>
-                </div>
-                <div>
-                  <p className="text-3xl font-bold text-white">5%</p>
-                  <p className="text-sm text-gray-400">Processing Fee</p>
-                </div>
+              <div className="mt-12 grid grid-cols-4 gap-4">
+                {Object.entries(LOAN_DURATIONS).map(([key, duration]) => (
+                  <div key={key} className="text-center">
+                    <p className="text-2xl font-bold text-[#D4AF37]">{duration.interestRate}%</p>
+                    <p className="text-xs text-gray-400">{duration.label}</p>
+                  </div>
+                ))}
               </div>
             </div>
             
@@ -152,7 +140,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Features */}
       <section className="py-20 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
@@ -184,7 +171,7 @@ export default function HomePage() {
                 <Clock className="h-6 w-6 text-white" />
               </div>
               <h3 className="font-semibold text-gray-900 mb-2">Flexible Terms</h3>
-              <p className="text-sm text-gray-600">28-day repayment period with renewal options</p>
+              <p className="text-sm text-gray-600">Choose 1-4 week repayment periods</p>
             </div>
             
             <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
@@ -198,7 +185,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Loan Products */}
       <section id="products" className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
@@ -225,7 +211,7 @@ export default function HomePage() {
                 <ul className="space-y-3 mb-6">
                   <li className="flex items-center gap-2 text-sm text-gray-600">
                     <CheckCircle className="h-4 w-4 text-[#00A86B]" />
-                    {product.interestRate}% interest rate
+                    10-45% interest (1-4 weeks)
                   </li>
                   <li className="flex items-center gap-2 text-sm text-gray-600">
                     <CheckCircle className="h-4 w-4 text-[#00A86B]" />
@@ -233,7 +219,7 @@ export default function HomePage() {
                   </li>
                   <li className="flex items-center gap-2 text-sm text-gray-600">
                     <CheckCircle className="h-4 w-4 text-[#00A86B]" />
-                    {product.repaymentDays} days repayment
+                    1-4 weeks repayment
                   </li>
                   <li className="flex items-center gap-2 text-sm text-gray-600">
                     <CheckCircle className="h-4 w-4 text-[#00A86B]" />
@@ -250,7 +236,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* How It Works */}
       <section id="how-it-works" className="py-20 bg-[#0A1F44]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
@@ -261,7 +246,7 @@ export default function HomePage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             {[
               { step: '01', title: 'Register', desc: 'Sign up with your phone number and basic details' },
-              { step: '02', title: 'Apply', desc: 'Choose your loan product and submit application' },
+              { step: '02', title: 'Apply', desc: 'Choose your loan product and select duration (1-4 weeks)' },
               { step: '03', title: 'Verify', desc: 'Complete KYC with National ID and selfie' },
               { step: '04', title: 'Receive', desc: 'Get funds via MTN MoMo or Airtel Money' },
             ].map((item, index) => (
@@ -277,12 +262,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Payment Methods */}
       <section className="py-20 bg-gray-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-[#0A1F44]">Payment Methods</h2>
-            <p className="mt-4 text-gray-600">Pay conveniently via mobile money</p>
+            <p className="mt-4 text-gray-600">Pay conveniently via mobile money or online</p>
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-2xl mx-auto">
@@ -307,7 +291,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Contact */}
       <section id="contact" className="py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -380,7 +363,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
       <footer className="bg-[#0A1F44] border-t border-white/10 py-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row items-center justify-between gap-4">
@@ -400,6 +382,8 @@ export default function HomePage() {
           </div>
         </div>
       </footer>
+
+      <InstallAppButton />
     </div>
   );
 }

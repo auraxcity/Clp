@@ -30,24 +30,46 @@ export default function SetupPage() {
       const auth = getAuthInstance();
       const db = getDb();
       
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        'twinemugabe@gmail.com',
-        'admin123'
-      );
+      const admins = [
+        { 
+          email: 'agatwitechnologies@gmail.com', 
+          password: 'mama48@nitah', 
+          fullName: 'Super Admin', 
+          phone: '+256700000000', 
+          role: 'super_admin' as const,
+          permissions: ['full_access'],
+        },
+        { 
+          email: 'twinemugabe@gmail.com', 
+          password: 'admin123', 
+          fullName: 'Admin User', 
+          phone: '+256773416453', 
+          role: 'admin' as const,
+          permissions: ['manage_users', 'manage_loans', 'manage_payments', 'view_reports'],
+        },
+      ];
 
-      await setDoc(doc(db, 'users', userCredential.user.uid), {
-        email: 'twinemugabe@gmail.com',
-        phone: '+256773416453',
-        fullName: 'Super Admin',
-        role: 'super_admin',
-        isActive: true,
-        kycVerified: true,
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      });
+      for (const admin of admins) {
+        try {
+          const userCredential = await createUserWithEmailAndPassword(auth, admin.email, admin.password);
+          await setDoc(doc(db, 'users', userCredential.user.uid), {
+            email: admin.email,
+            phone: admin.phone || '',
+            fullName: admin.fullName,
+            role: admin.role,
+            permissions: admin.permissions,
+            isActive: true,
+            kycVerified: true,
+            createdAt: Timestamp.now(),
+            updatedAt: Timestamp.now(),
+          });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : '';
+          if (!msg.includes('email-already-in-use')) throw err;
+        }
+      }
 
-      await setDoc(doc(db, 'systemStats', 'current'), {
+      await setDoc(doc(db, 'system', 'stats'), {
         totalActiveLoans: 0,
         totalCapitalDeployed: 0,
         totalCapitalAvailable: 0,
@@ -57,6 +79,7 @@ export default function SetupPage() {
         loansDueThisWeek: 0,
         loansDueThisWeekValue: 0,
         totalLateLoans: 0,
+        totalLateLoansValue: 0,
         portfolioAtRisk: 0,
         defaultRate: 0,
         reserveBalance: 0,
@@ -64,19 +87,16 @@ export default function SetupPage() {
         clpNetProfitThisMonth: 0,
         totalBorrowers: 0,
         totalInvestors: 0,
-        totalLoansIssued: 0,
-        totalAmountDisbursed: 0,
-        totalAmountRepaid: 0,
-        par7: 0,
-        par30: 0,
-        recoveryRatio: 0,
-        capitalUtilizationRate: 0,
-        liquidityRatio: 0,
-        reserveCoverage: 0,
+        totalLoansEverIssued: 0,
+        totalAmountEverDisbursed: 0,
+        totalAmountEverRepaid: 0,
+        totalActiveInvestments: 0,
+        totalInvestmentValue: 0,
+        totalPendingWithdrawals: 0,
         updatedAt: Timestamp.now(),
       });
 
-      toast.success('Super admin account created successfully!');
+      toast.success('Admin accounts and system stats ready!');
       setIsComplete(true);
       
       setTimeout(() => {
@@ -87,7 +107,7 @@ export default function SetupPage() {
       const errorMessage = error instanceof Error ? error.message : 'Setup failed';
       
       if (errorMessage.includes('email-already-in-use')) {
-        toast.success('Super admin already exists. Redirecting to login...');
+        toast.success('Admin(s) already exist. System stats updated. Redirecting...');
         setTimeout(() => router.push('/login'), 1500);
       } else {
         toast.error(`Setup failed: ${errorMessage}`);
@@ -121,10 +141,12 @@ export default function SetupPage() {
               </div>
               <h2 className="text-xl font-semibold text-gray-900 mb-2">Setup Complete!</h2>
               <p className="text-gray-600 mb-4">Redirecting to login...</p>
-              <div className="bg-gray-50 rounded-lg p-4 text-left">
-                <p className="text-sm font-medium text-gray-700">Login Credentials:</p>
-                <p className="text-sm text-gray-600 mt-1">Email: twinemugabe@gmail.com</p>
-                <p className="text-sm text-gray-600">Password: admin123</p>
+              <div className="bg-gray-50 rounded-lg p-4 text-left space-y-3">
+                <p className="text-sm font-medium text-gray-700">Admin logins:</p>
+                <p className="text-sm text-gray-600">
+                  <strong>Super Admin:</strong><br />
+                  agatwitechnologies@gmail.com
+                </p>
               </div>
             </div>
           ) : (
@@ -162,9 +184,9 @@ export default function SetupPage() {
                 <div className="bg-gray-50 rounded-lg p-4">
                   <p className="text-sm font-medium text-gray-700 mb-2">This will create:</p>
                   <ul className="text-sm text-gray-600 space-y-1">
-                    <li>• Super Admin: twinemugabe@gmail.com</li>
-                    <li>• Password: admin123</li>
-                    <li>• Initialize system statistics</li>
+                    <li>• Super Admin: agatwitechnologies@gmail.com</li>
+                    <li>• Admin: twinemugabe@gmail.com</li>
+                    <li>• Initialize system statistics (Firestore)</li>
                   </ul>
                 </div>
                 

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { getAuthInstance } from '@/lib/firebase';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -8,7 +10,7 @@ import { Modal } from '@/components/ui/Modal';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { useStore } from '@/store/useStore';
-import { getInvestors, createInvestor, updateInvestor, getLoansByInvestor } from '@/lib/firebase-service';
+import { getInvestors, createInvestor, updateInvestor, getLoansByInvestor, addInvestorCapital, investorWithdraw } from '@/lib/firebase-service';
 import { Investor, Loan } from '@/types';
 import { formatCurrency, formatDate } from '@/lib/utils';
 import { useForm } from 'react-hook-form';
@@ -20,11 +22,12 @@ import {
   TrendingUp, 
   Wallet, 
   DollarSign,
-  User,
-  Phone,
-  Edit,
   Eye,
   BarChart3,
+  Plus,
+  Minus,
+  UserX,
+  Phone,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -32,6 +35,7 @@ const investorSchema = z.object({
   name: z.string().min(2, 'Name is required'),
   phone: z.string().min(10, 'Valid phone required'),
   email: z.string().email().optional().or(z.literal('')),
+  loginPassword: z.string().min(6, 'Min 6 characters').optional().or(z.literal('')),
   capitalCommitted: z.string().min(1, 'Capital amount is required'),
   notes: z.string().optional(),
 });
@@ -46,6 +50,11 @@ export default function InvestorsPage() {
   const [selectedInvestor, setSelectedInvestor] = useState<Investor | null>(null);
   const [investorLoans, setInvestorLoans] = useState<Loan[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showAddCapitalModal, setShowAddCapitalModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const [showDeactivateModal, setShowDeactivateModal] = useState(false);
+  const [addCapitalAmount, setAddCapitalAmount] = useState('');
+  const [withdrawAmount, setWithdrawAmount] = useState('');
 
   const {
     register,
@@ -74,11 +83,19 @@ export default function InvestorsPage() {
     setIsSubmitting(true);
     try {
       const capitalAmount = parseInt(data.capitalCommitted);
+      let authUserId: string | undefined;
+      const email = (data.email ?? '').trim();
+      const loginPassword = (data.loginPassword ?? '').trim();
+      if (email && loginPassword) {
+        const { user } = await createUserWithEmailAndPassword(getAuthInstance(), email, loginPassword);
+        authUserId = user.uid;
+      }
       
       const investorData: Omit<Investor, 'id' | 'createdAt' | 'updatedAt'> = {
         name: data.name,
         phone: data.phone,
-        email: data.email || undefined,
+        email: email || undefined,
+        authUserId,
         capitalCommitted: capitalAmount,
         capitalDeployed: 0,
         capitalAvailable: capitalAmount,
@@ -87,18 +104,81 @@ export default function InvestorsPage() {
         roi: 0,
         isActive: true,
         notes: data.notes || undefined,
+        accruedInterest: 0,
+        lastInterestUpdate: new Date(),
       };
 
       const newInvestor = await createInvestor(investorData);
       addInvestorToStore(newInvestor);
-      toast.success('Investor added successfully!');
+      toast.success(authUserId ? 'Investor added! They can log in with their email and password.' : 'Investor added successfully!');
       reset();
       setShowAddModal(false);
     } catch (error) {
       console.error('Error creating investor:', error);
-      toast.error('Failed to add investor. Please try again.');
+      const msg = error instanceof Error ? error.message : '';
+      if (msg.includes('email-already-in-use')) toast.error('This email is already registered.');
+      else toast.error('Failed to add investor. Please try again.');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleAddCapital = async () => {
+    if (!selectedInvestor) return;
+    const amount = parseInt(addCapitalAmount, 10);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
+    try {
+      await addInvestorCapital(selectedInvestor.id, amount);
+      const updated = await getInvestors();
+      setInvestors(updated);
+      setSelectedInvestor({ ...selectedInvestor, capitalCommitted: selectedInvestor.capitalCommitted + amount, capitalAvailable: selectedInvestor.capitalAvailable + amount });
+      setAddCapitalAmount('');
+      setShowAddCapitalModal(false);
+      toast.success('Capital added.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to add capital');
+    }
+  };
+
+  const handleWithdraw = async () => {
+    if (!selectedInvestor) return;
+    const amount = parseInt(withdrawAmount, 10);
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Enter a valid amount');
+      return;
+    }
+    if (amount > selectedInvestor.capitalAvailable) {
+      toast.error('Insufficient available balance');
+      return;
+    }
+    try {
+      await investorWithdraw(selectedInvestor.id, amount);
+      const updated = await getInvestors();
+      setInvestors(updated);
+      setSelectedInvestor({ ...selectedInvestor, capitalAvailable: selectedInvestor.capitalAvailable - amount, capitalCommitted: selectedInvestor.capitalCommitted - amount });
+      setWithdrawAmount('');
+      setShowWithdrawModal(false);
+      toast.success('Payout processed.');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Failed to process payout');
+    }
+  };
+
+  const handleDeactivate = async () => {
+    if (!selectedInvestor) return;
+    try {
+      await updateInvestor(selectedInvestor.id, { isActive: false });
+      const updated = await getInvestors();
+      setInvestors(updated);
+      setSelectedInvestor({ ...selectedInvestor, isActive: false });
+      setShowDeactivateModal(false);
+      setShowDetailModal(false);
+      toast.success('Investor account deactivated.');
+    } catch (e) {
+      toast.error('Failed to deactivate');
     }
   };
 
@@ -260,19 +340,28 @@ export default function InvestorsPage() {
                   </div>
                 </div>
 
-                <div className="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
                   <div className="text-sm">
                     <span className="text-gray-500">ROI: </span>
                     <span className="font-semibold text-[#00A86B]">{investor.roi}%</span>
                   </div>
-                  <Button 
-                    size="sm" 
-                    variant="outline"
-                    onClick={() => handleViewDetails(investor)}
-                  >
-                    <Eye className="h-4 w-4 mr-1" />
-                    Details
-                  </Button>
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="outline" onClick={() => { setSelectedInvestor(investor); setShowAddCapitalModal(true); }} title="Add capital">
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setSelectedInvestor(investor); setShowWithdrawModal(true); }} title="Payout / Withdraw">
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    {investor.isActive && (
+                      <Button size="sm" variant="outline" className="text-red-600 border-red-200" onClick={() => { setSelectedInvestor(investor); setShowDeactivateModal(true); }} title="Deactivate">
+                        <UserX className="h-4 w-4" />
+                      </Button>
+                    )}
+                    <Button size="sm" variant="outline" onClick={() => handleViewDetails(investor)}>
+                      <Eye className="h-4 w-4 mr-1" />
+                      Details
+                    </Button>
+                  </div>
                 </div>
               </Card>
             ))}
@@ -305,6 +394,13 @@ export default function InvestorsPage() {
               placeholder="email@example.com"
               error={errors.email?.message}
               {...register('email')}
+            />
+            <Input
+              label="Login password (optional – for investor portal)"
+              type="password"
+              placeholder="Min 6 characters"
+              error={errors.loginPassword?.message}
+              {...register('loginPassword')}
             />
             <Input
               label="Capital Commitment (UGX) *"
@@ -410,10 +506,62 @@ export default function InvestorsPage() {
                 )}
               </div>
 
-              <div className="flex justify-end">
+              <div className="flex flex-wrap gap-2 justify-end">
+                <Button variant="outline" size="sm" onClick={() => { setShowDetailModal(false); setShowAddCapitalModal(true); }}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Capital
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => { setShowDetailModal(false); setShowWithdrawModal(true); }}>
+                  <Minus className="h-4 w-4 mr-1" />
+                  Payout / Withdraw
+                </Button>
+                {selectedInvestor?.isActive && (
+                  <Button variant="outline" size="sm" className="text-red-600 border-red-200" onClick={() => setShowDeactivateModal(true)}>
+                    <UserX className="h-4 w-4 mr-1" />
+                    Deactivate Account
+                  </Button>
+                )}
                 <Button variant="outline" onClick={() => setShowDetailModal(false)}>
                   Close
                 </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        <Modal isOpen={showAddCapitalModal} onClose={() => setShowAddCapitalModal(false)} title="Add Capital" size="md">
+          {selectedInvestor && (
+            <div className="space-y-4">
+              <p className="text-gray-600">Add capital for <strong>{selectedInvestor.name}</strong>. Available: {formatCurrency(selectedInvestor.capitalAvailable)}</p>
+              <Input label="Amount (UGX)" type="number" placeholder="Enter amount" value={addCapitalAmount} onChange={(e) => setAddCapitalAmount(e.target.value)} />
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setShowAddCapitalModal(false)}>Cancel</Button>
+                <Button className="flex-1" onClick={handleAddCapital}>Add Capital</Button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        <Modal isOpen={showWithdrawModal} onClose={() => setShowWithdrawModal(false)} title="Payout / Withdraw" size="md">
+          {selectedInvestor && (
+            <div className="space-y-4">
+              <p className="text-gray-600">Withdraw from <strong>{selectedInvestor.name}</strong>. Available: {formatCurrency(selectedInvestor.capitalAvailable)}</p>
+              <Input label="Amount (UGX)" type="number" placeholder="Enter amount" value={withdrawAmount} onChange={(e) => setWithdrawAmount(e.target.value)} />
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setShowWithdrawModal(false)}>Cancel</Button>
+                <Button className="flex-1" onClick={handleWithdraw}>Process Payout</Button>
+              </div>
+            </div>
+          )}
+        </Modal>
+
+        <Modal isOpen={showDeactivateModal} onClose={() => setShowDeactivateModal(false)} title="Deactivate Investor" size="md">
+          {selectedInvestor && (
+            <div className="space-y-4">
+              <p className="text-gray-600">Deactivate account for <strong>{selectedInvestor.name}</strong>? They will no longer be able to log in to the investor portal. Capital and data remain stored.</p>
+              <div className="flex gap-2">
+                <Button variant="outline" className="flex-1" onClick={() => setShowDeactivateModal(false)}>Cancel</Button>
+                <Button variant="danger" className="flex-1" onClick={handleDeactivate}>Deactivate</Button>
               </div>
             </div>
           )}

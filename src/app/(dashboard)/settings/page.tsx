@@ -5,7 +5,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { MERCHANT_CODES, LOAN_PRODUCTS, PENALTY_RATE, INVESTOR_SHARE, CLP_SHARE, RESERVE_SHARE, REFERRAL_SIGNUP_BONUS, REFERRAL_COMPLETION_BONUS_RATE } from '@/types';
+import { MERCHANT_CODES, LOAN_PRODUCTS, LOAN_DURATIONS, PENALTY_RATE, INVESTOR_SHARE, CLP_SHARE, RESERVE_SHARE, REFERRAL_SIGNUP_BONUS, REFERRAL_COMPLETION_BONUS_RATE } from '@/types';
 import { formatCurrency } from '@/lib/utils';
 import { 
   Settings, 
@@ -165,20 +165,28 @@ export default function SettingsPage() {
                       </span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Interest: </span>
-                      <span className="font-medium">{product.interestRate}%</span>
-                    </div>
-                    <div>
                       <span className="text-gray-500">Processing: </span>
                       <span className="font-medium">{product.processingFee}%</span>
                     </div>
                     <div>
-                      <span className="text-gray-500">Term: </span>
-                      <span className="font-medium">{product.repaymentDays} days</span>
+                      <span className="text-gray-500">Collateral: </span>
+                      <span className="font-medium">{product.collateralRequired ? 'Required' : 'Optional'}</span>
                     </div>
                   </div>
                 </div>
               ))}
+            </div>
+            
+            <div className="mt-4 pt-4 border-t border-gray-200">
+              <h4 className="font-medium text-gray-900 mb-3">Loan Duration & Interest Rates</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                {Object.values(LOAN_DURATIONS).map((d) => (
+                  <div key={d.weeks} className="p-3 bg-gray-50 rounded-lg text-center">
+                    <p className="text-lg font-bold text-[#0A1F44]">{d.weeks} Week{d.weeks > 1 ? 's' : ''}</p>
+                    <p className="text-sm text-[#00A86B] font-medium">{d.interestRate}% Interest</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </Card>
 

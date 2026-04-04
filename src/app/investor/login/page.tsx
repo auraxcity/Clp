@@ -4,14 +4,15 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Card } from '@/components/ui/Card';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { getAuthInstance } from '@/lib/firebase';
-import { getUserById, getInvestorByAuthUserId } from '@/lib/firebase-service';
-import { Shield, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { getInvestorByAuthUserId } from '@/lib/firebase-service';
+import { PiggyBank, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import Link from 'next/link';
 
-export default function LoginPage() {
+export default function InvestorLoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -31,20 +32,16 @@ export default function LoginPage() {
     try {
       const auth = getAuthInstance();
       const { user } = await signInWithEmailAndPassword(auth, email, password);
-      const adminUser = await getUserById(user.uid);
-      if (adminUser && (adminUser.role === 'super_admin' || adminUser.role === 'admin')) {
-        toast.success('Welcome back!');
-        router.push('/dashboard');
-        return;
-      }
+      
       const investor = await getInvestorByAuthUserId(user.uid);
-      if (investor) {
-        toast.success('Welcome back!');
-        router.push('/investor/dashboard');
+      if (!investor) {
+        toast.error('No investor account found. Please sign up first.');
+        setIsLoading(false);
         return;
       }
-      toast.success('Login successful!');
-      router.push('/user/dashboard');
+
+      toast.success('Welcome back!');
+      router.push('/investor/dashboard');
     } catch (error: unknown) {
       console.error('Login error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Invalid email or password';
@@ -77,16 +74,16 @@ export default function LoginPage() {
       </div>
       
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-3xl shadow-2xl p-8">
+        <Card className="p-8">
           <div className="flex items-center justify-center mb-8">
             <div className="h-16 w-16 rounded-2xl bg-[#D4AF37] flex items-center justify-center">
-              <Shield className="h-8 w-8 text-[#0A1F44]" />
+              <PiggyBank className="h-8 w-8 text-[#0A1F44]" />
             </div>
           </div>
           
           <div className="text-center mb-8">
-            <h1 className="text-2xl font-bold text-[#0A1F44]">Login</h1>
-            <p className="text-gray-500 mt-2">Sign in as Admin, Investor, or Borrower</p>
+            <h1 className="text-2xl font-bold text-[#0A1F44]">Investor Login</h1>
+            <p className="text-gray-500 mt-2">Sign in to your investor account</p>
           </div>
           
           <form onSubmit={handleLogin} className="space-y-6">
@@ -96,7 +93,7 @@ export default function LoginPage() {
               </label>
               <Input
                 type="email"
-                placeholder="admin@example.com"
+                placeholder="investor@example.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full"
@@ -133,7 +130,7 @@ export default function LoginPage() {
             
             <Button
               type="submit"
-              className="w-full"
+              className="w-full bg-[#D4AF37] hover:bg-[#c4a030] text-[#0A1F44]"
               isLoading={isLoading}
               disabled={isLoading}
             >
@@ -141,15 +138,24 @@ export default function LoginPage() {
             </Button>
           </form>
           
-          <div className="mt-8 pt-6 border-t border-gray-100">
-            <p className="text-center text-sm text-gray-500">
-              CLP - Creso&apos;s Loan Plug
-            </p>
-            <p className="text-center text-xs text-gray-400 mt-1">
-              Fast. Structured. Reliable.
+          <div className="mt-6 text-center">
+            <p className="text-sm text-gray-600">
+              Don&apos;t have an account?{' '}
+              <Link href="/investor/signup" className="text-[#D4AF37] hover:underline font-medium">
+                Create Account
+              </Link>
             </p>
           </div>
-        </div>
+          
+          <div className="mt-8 pt-6 border-t border-gray-100">
+            <p className="text-center text-sm text-gray-500">
+              CLP Investor Portal
+            </p>
+            <p className="text-center text-xs text-gray-400 mt-1">
+              Secure. Profitable. Trusted.
+            </p>
+          </div>
+        </Card>
         
         <p className="text-center text-gray-400 text-sm mt-6">
           © {new Date().getFullYear()} CLP Capital. All rights reserved.

@@ -8,13 +8,15 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
-import { Loan, LoanProduct, LOAN_PRODUCTS, Borrower, Investor } from '@/types';
+import { Loan, LoanProduct, LOAN_PRODUCTS, Borrower, Investor, LOAN_DURATIONS } from '@/types';
 import { 
   formatCurrency, 
-  calculateInterest, 
+  calculateLoanInterest, 
   calculateProcessingFee, 
   calculateTotalPayable,
-  calculateDueDate 
+  calculateDueDate,
+  calculateDisbursementAmount,
+  getLoanInterestRate
 } from '@/lib/utils';
 import { createLoan, getBorrowers, getInvestors, uploadKYCDocument } from '@/lib/firebase-service';
 import { Upload, X, Calculator } from 'lucide-react';
@@ -25,6 +27,7 @@ const loanSchema = z.object({
   borrowerId: z.string().min(1, 'Please select a borrower'),
   loanProduct: z.enum(['quick_cash', 'business_boost', 'investor_backed_premium']),
   principalAmount: z.string().min(1, 'Amount is required'),
+  duration: z.enum(['1', '2', '3', '4']),
   purpose: z.string().min(10, 'Please describe the loan purpose'),
   collateralType: z.string().optional(),
   collateralDescription: z.string().optional(),
@@ -66,6 +69,7 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
       borrowerId: preSelectedBorrowerId || '',
       loanProduct: 'quick_cash',
       principalAmount: '',
+      duration: '1',
       purpose: '',
       collateralType: '',
       collateralDescription: '',
@@ -76,6 +80,7 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
 
   const watchedAmount = watch('principalAmount');
   const watchedProduct = watch('loanProduct');
+  const watchedDuration = watch('duration');
 
   useEffect(() => {
     async function loadData() {
@@ -95,17 +100,17 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
 
   useEffect(() => {
     const amount = parseInt(watchedAmount) || 0;
-    const product = LOAN_PRODUCTS[watchedProduct as LoanProduct];
+    const duration = parseInt(watchedDuration) as 1 | 2 | 3 | 4;
     
-    if (amount > 0 && product) {
+    if (amount > 0) {
       setCalculatedValues({
-        interest: calculateInterest(amount, product.interestRate),
-        processingFee: calculateProcessingFee(amount, product.processingFee),
-        totalPayable: calculateTotalPayable(amount, product.interestRate),
-        dueDate: calculateDueDate(new Date(), product.repaymentDays),
+        interest: calculateLoanInterest(amount, duration),
+        processingFee: calculateProcessingFee(amount),
+        totalPayable: calculateTotalPayable(amount, duration),
+        dueDate: calculateDueDate(new Date(), duration),
       });
     }
-  }, [watchedAmount, watchedProduct]);
+  }, [watchedAmount, watchedDuration]);
 
   const handleCollateralImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -139,6 +144,7 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
   const onSubmit = async (data: LoanFormData) => {
     const amount = parseInt(data.principalAmount);
     const product = LOAN_PRODUCTS[data.loanProduct as LoanProduct];
+    const duration = parseInt(data.duration) as 1 | 2 | 3 | 4;
 
     if (amount < product.minAmount || amount > product.maxAmount) {
       toast.error(`Amount must be between ${formatCurrency(product.minAmount)} and ${formatCurrency(product.maxAmount)}`);
@@ -160,13 +166,16 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
         );
       }
 
+      const interestRate = getLoanInterestRate(duration);
       const loanData: Omit<Loan, 'id' | 'createdAt' | 'updatedAt'> = {
         borrowerId: data.borrowerId,
         borrowerName: borrower.fullName,
         borrowerPhone: borrower.phone,
         loanProduct: data.loanProduct as LoanProduct,
         principalAmount: amount,
-        interestRate: product.interestRate,
+        duration: duration,
+        interestRate: interestRate,
+        currentInterestTier: duration,
         interestAmount: calculatedValues.interest,
         processingFee: calculatedValues.processingFee,
         processingFeePaid: false,
@@ -182,6 +191,8 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
         collateralImageUrls: collateralImageUrls.length > 0 ? collateralImageUrls : undefined,
         penaltyAmount: 0,
         weeksLate: 0,
+        defaultAlertsCount: 0,
+        creditBureauReported: false,
         notes: data.notes || undefined,
       };
 
@@ -219,7 +230,7 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
       {/* Loan Details */}
       <div>
         <h3 className="text-lg font-semibold text-gray-900 mb-4">Loan Details</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Select
             label="Loan Product *"
             options={[
@@ -237,6 +248,15 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
             error={errors.principalAmount?.message}
             {...register('principalAmount')}
           />
+          <Select
+            label="Loan Duration *"
+            options={Object.values(LOAN_DURATIONS).map(d => ({
+              value: d.weeks.toString(),
+              label: `${d.weeks} Week${d.weeks > 1 ? 's' : ''} - ${d.interestRate}% Interest`
+            }))}
+            error={errors.duration?.message}
+            {...register('duration')}
+          />
         </div>
       </div>
 
@@ -247,18 +267,22 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
             <Calculator className="h-5 w-5 text-[#0A1F44]" />
             <h4 className="font-semibold text-gray-900">Loan Summary</h4>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
             <div>
               <p className="text-xs text-gray-500">Principal</p>
               <p className="text-lg font-bold text-gray-900">{formatCurrency(amount)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Interest ({selectedProduct?.interestRate}%)</p>
-              <p className="text-lg font-bold text-[#0A1F44]">{formatCurrency(calculatedValues.interest)}</p>
+              <p className="text-xs text-gray-500">Processing Fee (5%)</p>
+              <p className="text-lg font-bold text-yellow-600">{formatCurrency(calculatedValues.processingFee)}</p>
             </div>
             <div>
-              <p className="text-xs text-gray-500">Processing Fee ({selectedProduct?.processingFee}%)</p>
-              <p className="text-lg font-bold text-yellow-600">{formatCurrency(calculatedValues.processingFee)}</p>
+              <p className="text-xs text-gray-500">Amount Disbursed</p>
+              <p className="text-lg font-bold text-blue-600">{formatCurrency(calculateDisbursementAmount(amount))}</p>
+            </div>
+            <div>
+              <p className="text-xs text-gray-500">Interest ({getLoanInterestRate(parseInt(watchedDuration) as 1 | 2 | 3 | 4)}%)</p>
+              <p className="text-lg font-bold text-[#0A1F44]">{formatCurrency(calculatedValues.interest)}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500">Total Payable</p>
@@ -268,7 +292,7 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
           <div className="mt-3 pt-3 border-t border-gray-200">
             <p className="text-sm text-gray-600">
               Due Date: <span className="font-semibold">{calculatedValues.dueDate.toLocaleDateString()}</span>
-              <span className="text-gray-400 ml-2">({selectedProduct?.repaymentDays} days)</span>
+              <span className="text-gray-400 ml-2">({watchedDuration} week{parseInt(watchedDuration) > 1 ? 's' : ''})</span>
             </p>
           </div>
         </div>

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc, Timestamp, collection, query, where, getDocs } from 'firebase/firestore';
 import { getAuthInstance, getDb } from '@/lib/firebase';
 import { Shield, Eye, EyeOff, ArrowLeft, User, Phone, Mail, MapPin } from 'lucide-react';
@@ -59,6 +59,11 @@ export default function UserSignupPage() {
         formData.email,
         formData.password
       );
+
+      // Set display name in Firebase Auth
+      await updateProfile(userCredential.user, {
+        displayName: formData.fullName
+      });
 
       const referralCode = `CLP${uuidv4().substring(0, 6).toUpperCase()}`;
 

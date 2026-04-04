@@ -45,24 +45,78 @@ export default function LoanHistoryPage() {
   const loadUserData = async (uid: string) => {
     try {
       const db = getDb();
+      const auth = getAuthInstance();
+      const currentUser = auth.currentUser;
+      const userEmail = currentUser?.email || '';
+      const userPhone = currentUser?.phoneNumber || '';
+      
+      let borrowerIds: string[] = [uid];
+      
+      // Also search borrowers by email
+      if (userEmail) {
+        const borrowersByEmailQuery = query(
+          collection(db, 'borrowers'),
+          where('email', '==', userEmail)
+        );
+        const borrowersByEmail = await getDocs(borrowersByEmailQuery);
+        borrowersByEmail.docs.forEach(doc => {
+          if (!borrowerIds.includes(doc.id)) {
+            borrowerIds.push(doc.id);
+          }
+        });
+      }
+      
+      // Search borrowers by phone
+      if (userPhone) {
+        const borrowersByPhoneQuery = query(
+          collection(db, 'borrowers'),
+          where('phone', '==', userPhone)
+        );
+        const borrowersByPhone = await getDocs(borrowersByPhoneQuery);
+        borrowersByPhone.docs.forEach(doc => {
+          if (!borrowerIds.includes(doc.id)) {
+            borrowerIds.push(doc.id);
+          }
+        });
+      }
 
-      const loansQuery = query(
-        collection(db, 'loans'),
-        where('borrowerId', '==', uid),
-        orderBy('createdAt', 'desc')
-      );
-      const loansSnapshot = await getDocs(loansQuery);
-      const loansData = loansSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Loan));
-      setLoans(loansData);
+      // Collect all loans and payments for all borrower IDs
+      let allLoans: Loan[] = [];
+      let allPayments: Payment[] = [];
+      
+      for (const borrowerId of borrowerIds) {
+        const loansQuery = query(
+          collection(db, 'loans'),
+          where('borrowerId', '==', borrowerId)
+        );
+        const loansSnapshot = await getDocs(loansQuery);
+        const loans = loansSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Loan));
+        allLoans = [...allLoans, ...loans];
 
-      const paymentsQuery = query(
-        collection(db, 'payments'),
-        where('borrowerId', '==', uid),
-        orderBy('submittedAt', 'desc')
-      );
-      const paymentsSnapshot = await getDocs(paymentsQuery);
-      const paymentsData = paymentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Payment));
-      setPayments(paymentsData);
+        const paymentsQuery = query(
+          collection(db, 'payments'),
+          where('borrowerId', '==', borrowerId)
+        );
+        const paymentsSnapshot = await getDocs(paymentsQuery);
+        const payments = paymentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Payment));
+        allPayments = [...allPayments, ...payments];
+      }
+      
+      // Sort by date
+      allLoans.sort((a, b) => {
+        const dateA = a.createdAt instanceof Date ? a.createdAt : new Date(a.createdAt as unknown as string);
+        const dateB = b.createdAt instanceof Date ? b.createdAt : new Date(b.createdAt as unknown as string);
+        return dateB.getTime() - dateA.getTime();
+      });
+      
+      allPayments.sort((a, b) => {
+        const dateA = a.submittedAt instanceof Date ? a.submittedAt : new Date(a.submittedAt as unknown as string);
+        const dateB = b.submittedAt instanceof Date ? b.submittedAt : new Date(b.submittedAt as unknown as string);
+        return dateB.getTime() - dateA.getTime();
+      });
+      
+      setLoans(allLoans);
+      setPayments(allPayments);
     } catch (error) {
       console.error('Error loading history:', error);
     }

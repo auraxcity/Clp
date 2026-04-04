@@ -1,63 +1,56 @@
 'use client';
 
-import { ReactNode } from 'react';
-import { cn } from '@/lib/utils';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import type { ReactNode } from 'react';
 
 interface StatCardProps {
   title: string;
   value: string | number;
-  icon: ReactNode;
-  trend?: {
-    value: number;
-    isPositive: boolean;
-  };
-  subtitle?: string;
-  className?: string;
+  subtitle?: string | number;
+  icon?: ReactNode;
   iconBgColor?: string;
+  isLoading?: boolean;
 }
 
 export function StatCard({
   title,
   value,
-  icon,
-  trend,
   subtitle,
-  className,
+  icon,
   iconBgColor = 'bg-[#0A1F44]',
+  isLoading = false,
 }: StatCardProps) {
   return (
-    <div className={cn('bg-white rounded-xl p-6 border border-gray-200', className)}>
-      <div className="flex items-start justify-between">
-        <div>
-          <p className="text-sm font-medium text-gray-500">{title}</p>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{value}</p>
-          {subtitle && (
-            <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
-          )}
-          {trend && (
-            <div className="flex items-center gap-1 mt-2">
-              {trend.isPositive ? (
-                <TrendingUp className="h-4 w-4 text-green-500" />
-              ) : (
-                <TrendingDown className="h-4 w-4 text-red-500" />
-              )}
-              <span
-                className={cn(
-                  'text-sm font-medium',
-                  trend.isPositive ? 'text-green-500' : 'text-red-500'
-                )}
-              >
-                {trend.value}%
-              </span>
-              <span className="text-xs text-gray-400">vs last month</span>
-            </div>
-          )}
-        </div>
-        <div className={cn('p-3 rounded-lg', iconBgColor)}>
+    <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm flex items-start gap-4">
+      {icon && (
+        <div className={`flex h-10 w-10 items-center justify-center rounded-full ${iconBgColor}`}>
           {icon}
         </div>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+          {title}
+        </p>
+        {isLoading ? (
+          <div className="mt-2 space-y-2">
+            <div className="h-5 w-24 rounded bg-gray-200 animate-pulse" />
+            {subtitle !== undefined && (
+              <div className="h-3 w-20 rounded bg-gray-100 animate-pulse" />
+            )}
+          </div>
+        ) : (
+          <>
+            <p className="mt-2 text-2xl font-bold text-gray-900 truncate">
+              {value}
+            </p>
+            {subtitle !== undefined && (
+              <p className="mt-1 text-xs text-gray-500">
+                {subtitle}
+              </p>
+            )}
+          </>
+        )}
       </div>
     </div>
   );
 }
+

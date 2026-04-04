@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Textarea } from '@/components/ui/Textarea';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, addDoc, collection, Timestamp, query, where, getDocs } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -18,12 +17,13 @@ import {
   Upload,
   CheckCircle,
   AlertCircle,
-  Info
+  Info,
+  Clock,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import Link from 'next/link';
-import { formatCurrency } from '@/lib/utils';
-import { LOAN_PRODUCTS, Borrower, LoanProduct } from '@/types';
+import { formatCurrency, calculateLoanSummary } from '@/lib/utils';
+import { LOAN_PRODUCTS, LOAN_DURATIONS, Borrower, LoanProduct } from '@/types';
 
 export default function ApplyForLoanPage() {
   const router = useRouter();
@@ -40,6 +40,7 @@ export default function ApplyForLoanPage() {
     purpose: '',
     occupation: '',
     monthlyIncome: '',
+    duration: 1 as 1 | 2 | 3 | 4,
   });
 
   const [nationalIdFile, setNationalIdFile] = useState<File | null>(null);
@@ -63,23 +64,30 @@ export default function ApplyForLoanPage() {
   const loadUserData = async (uid: string) => {
     try {
       const db = getDb();
+      const auth = getAuthInstance();
+      const currentUser = auth.currentUser;
+      const userEmail = currentUser?.email || '';
+      const userPhone = currentUser?.phoneNumber || '';
+      const displayName = currentUser?.displayName || '';
       
-      // Try to get borrower doc
+      let borrowerData: Borrower | null = null;
+      let borrowerIds: string[] = [uid];
+      
       const borrowerDoc = await getDoc(doc(db, 'borrowers', uid));
       if (borrowerDoc.exists()) {
-        setBorrower({ id: borrowerDoc.id, ...borrowerDoc.data() } as Borrower);
-      } else {
-        // If no borrower doc, try to get user doc and create borrower
+        borrowerData = { id: borrowerDoc.id, ...borrowerDoc.data() } as Borrower;
+      }
+      
+      if (!borrowerData) {
         const userDoc = await getDoc(doc(db, 'users', uid));
         if (userDoc.exists()) {
           const userData = userDoc.data();
-          // Create a temporary borrower object from user data
-          setBorrower({
+          borrowerData = {
             id: uid,
             userId: uid,
-            fullName: userData.fullName || 'User',
-            phone: userData.phone || '',
-            email: userData.email || '',
+            fullName: userData.fullName || displayName || 'User',
+            phone: userData.phone || userPhone || '',
+            email: userData.email || userEmail || '',
             location: userData.location || 'Not specified',
             riskGrade: 'C',
             riskScore: 50,
@@ -94,37 +102,56 @@ export default function ApplyForLoanPage() {
             isBlacklisted: false,
             createdAt: new Date(),
             updatedAt: new Date(),
-          } as Borrower);
+          } as Borrower;
         }
       }
-
-      // Check for active loans
-      try {
-        const loansQuery = query(
-          collection(db, 'loans'),
-          where('borrowerId', '==', uid),
-          where('status', 'in', ['active', 'due_soon', 'late', 'approved'])
+      
+      if (userEmail) {
+        const borrowersByEmailQuery = query(
+          collection(db, 'borrowers'),
+          where('email', '==', userEmail)
         );
-        const loansSnapshot = await getDocs(loansQuery);
-        setHasActiveLoan(!loansSnapshot.empty);
-      } catch (e) {
-        console.log('No active loans or index not ready');
-        setHasActiveLoan(false);
+        const borrowersByEmail = await getDocs(borrowersByEmailQuery);
+        borrowersByEmail.docs.forEach(doc => {
+          if (!borrowerIds.includes(doc.id)) {
+            borrowerIds.push(doc.id);
+          }
+          if (!borrowerData || !borrowerData.fullName || borrowerData.fullName === 'User') {
+            borrowerData = { id: doc.id, ...doc.data() } as Borrower;
+          }
+        });
+      }
+      
+      if (borrowerData) {
+        setBorrower(borrowerData);
       }
 
-      // Check for pending applications
-      try {
-        const pendingQuery = query(
-          collection(db, 'loans'),
-          where('borrowerId', '==', uid),
-          where('status', '==', 'pending')
-        );
-        const pendingSnapshot = await getDocs(pendingQuery);
-        setHasPendingApplication(!pendingSnapshot.empty);
-      } catch (e) {
-        console.log('No pending applications or index not ready');
-        setHasPendingApplication(false);
+      let hasActive = false;
+      let hasPending = false;
+      
+      for (const borrowerId of borrowerIds) {
+        try {
+          const loansQuery = query(
+            collection(db, 'loans'),
+            where('borrowerId', '==', borrowerId)
+          );
+          const loansSnapshot = await getDocs(loansQuery);
+          loansSnapshot.docs.forEach(doc => {
+            const status = doc.data().status;
+            if (['active', 'due_soon', 'late', 'approved'].includes(status)) {
+              hasActive = true;
+            }
+            if (status === 'pending') {
+              hasPending = true;
+            }
+          });
+        } catch (e) {
+          console.log('Error checking loans for borrowerId:', borrowerId);
+        }
       }
+      
+      setHasActiveLoan(hasActive);
+      setHasPendingApplication(hasPending);
     } catch (error) {
       console.error('Error loading user data:', error);
       toast.error('Error loading your profile. Please try again.');
@@ -133,10 +160,7 @@ export default function ApplyForLoanPage() {
 
   const selectedProduct = LOAN_PRODUCTS[formData.loanProduct];
   const amount = parseFloat(formData.amount) || 0;
-  const processingFee = amount * (selectedProduct.processingFee / 100);
-  const interest = amount * (selectedProduct.interestRate / 100);
-  const totalPayable = amount + interest;
-  const disbursementAmount = amount - processingFee;
+  const loanSummary = amount > 0 ? calculateLoanSummary(amount, formData.duration) : null;
 
   const isAmountValid = amount >= selectedProduct.minAmount && amount <= selectedProduct.maxAmount;
   const needsCollateral = 'collateralThreshold' in selectedProduct && 
@@ -196,14 +220,12 @@ export default function ApplyForLoanPage() {
         return;
       }
 
-      // Get borrower name and phone from state or user
       const borrowerName = borrower?.fullName || currentUser.displayName || 'User';
       const borrowerPhone = borrower?.phone || currentUser.phoneNumber || '';
 
       let nationalIdUrl = '';
       let selfieUrl = '';
 
-      // Upload National ID
       try {
         const nationalIdRef = ref(storage, `kyc/${userId}/national_id_${Date.now()}`);
         await uploadBytes(nationalIdRef, nationalIdFile);
@@ -215,7 +237,6 @@ export default function ApplyForLoanPage() {
         return;
       }
 
-      // Upload Selfie
       try {
         const selfieRef = ref(storage, `kyc/${userId}/selfie_${Date.now()}`);
         await uploadBytes(selfieRef, selfieFile);
@@ -227,8 +248,11 @@ export default function ApplyForLoanPage() {
         return;
       }
 
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + selectedProduct.repaymentDays);
+      if (!loanSummary) {
+        toast.error('Invalid loan amount');
+        setIsSubmitting(false);
+        return;
+      }
 
       await addDoc(collection(db, 'loans'), {
         borrowerId: userId,
@@ -236,16 +260,17 @@ export default function ApplyForLoanPage() {
         borrowerPhone: borrowerPhone,
         loanProduct: formData.loanProduct,
         principalAmount: amount,
-        interestRate: selectedProduct.interestRate,
-        interestAmount: interest,
-        processingFee: processingFee,
+        interestRate: loanSummary.interestRate,
+        interestAmount: loanSummary.interestAmount,
+        processingFee: loanSummary.processingFee,
         processingFeePaid: false,
-        totalPayable: totalPayable,
-        outstandingBalance: totalPayable,
+        totalPayable: loanSummary.totalPayable,
+        outstandingBalance: loanSummary.totalPayable,
         amountDisbursed: 0,
-        disbursementAmount: disbursementAmount,
+        disbursementAmount: loanSummary.disbursementAmount,
         loanDate: Timestamp.now(),
-        dueDate: Timestamp.fromDate(dueDate),
+        dueDate: Timestamp.fromDate(loanSummary.dueDate),
+        duration: formData.duration,
         status: 'pending',
         purpose: formData.purpose,
         occupation: formData.occupation || '',
@@ -255,6 +280,9 @@ export default function ApplyForLoanPage() {
         collateralRequired: needsCollateral,
         weeksLate: 0,
         penaltyAmount: 0,
+        currentInterestTier: formData.duration,
+        defaultAlertsCount: 0,
+        creditBureauReported: false,
         createdAt: Timestamp.now(),
         updatedAt: Timestamp.now(),
       });
@@ -321,7 +349,6 @@ export default function ApplyForLoanPage() {
     <div className="min-h-screen bg-gray-50">
       <Toaster position="top-right" />
       
-      {/* Header */}
       <header className="bg-[#0A1F44] text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center h-16">
@@ -336,7 +363,6 @@ export default function ApplyForLoanPage() {
 
       <main className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Loan Product Selection */}
           <Card className="p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Select Loan Product</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -356,13 +382,40 @@ export default function ApplyForLoanPage() {
                   <p className="text-sm text-gray-500 mt-1">
                     {formatCurrency(product.minAmount)} - {formatCurrency(product.maxAmount)}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">{product.interestRate}% interest</p>
                 </button>
               ))}
             </div>
           </Card>
 
-          {/* Loan Amount */}
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Loan Duration</h2>
+            <p className="text-sm text-gray-500 mb-4">Choose your repayment period. Interest rate increases with duration.</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {([1, 2, 3, 4] as const).map((weeks) => {
+                const duration = LOAN_DURATIONS[weeks];
+                return (
+                  <button
+                    key={weeks}
+                    type="button"
+                    onClick={() => setFormData({ ...formData, duration: weeks })}
+                    className={`p-4 rounded-xl border-2 text-center transition-all ${
+                      formData.duration === weeks
+                        ? 'border-[#00A86B] bg-[#00A86B]/5'
+                        : 'border-gray-200 hover:border-gray-300'
+                    }`}
+                  >
+                    <Clock className={`h-5 w-5 mx-auto mb-2 ${formData.duration === weeks ? 'text-[#00A86B]' : 'text-gray-400'}`} />
+                    <p className="font-semibold text-gray-900">{duration.label}</p>
+                    <p className={`text-lg font-bold mt-1 ${formData.duration === weeks ? 'text-[#00A86B]' : 'text-gray-700'}`}>
+                      {duration.interestRate}%
+                    </p>
+                    <p className="text-xs text-gray-500">interest</p>
+                  </button>
+                );
+              })}
+            </div>
+          </Card>
+
           <Card className="p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Loan Details</h2>
             
@@ -430,8 +483,7 @@ export default function ApplyForLoanPage() {
             </div>
           </Card>
 
-          {/* Loan Summary */}
-          {amount > 0 && isAmountValid && (
+          {loanSummary && isAmountValid && (
             <Card className="p-6 bg-[#0A1F44] text-white">
               <div className="flex items-center gap-2 mb-4">
                 <Calculator className="h-5 w-5" />
@@ -439,35 +491,61 @@ export default function ApplyForLoanPage() {
               </div>
               <div className="space-y-3">
                 <div className="flex justify-between">
-                  <span className="text-gray-300">Principal Amount</span>
+                  <span className="text-gray-300">Loan Amount</span>
                   <span className="font-semibold">{formatCurrency(amount)}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-300">Processing Fee ({selectedProduct.processingFee}%)</span>
-                  <span className="font-semibold text-red-300">-{formatCurrency(processingFee)}</span>
+                  <span className="text-gray-300">Processing Fee ({loanSummary.processingFeeRate}%)</span>
+                  <span className="font-semibold text-red-300">-{formatCurrency(loanSummary.processingFee)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-300">You Will Receive</span>
-                  <span className="font-semibold text-[#00A86B]">{formatCurrency(disbursementAmount)}</span>
+                  <span className="font-semibold text-[#00A86B]">{formatCurrency(loanSummary.disbursementAmount)}</span>
                 </div>
                 <hr className="border-white/20" />
                 <div className="flex justify-between">
-                  <span className="text-gray-300">Interest ({selectedProduct.interestRate}%)</span>
-                  <span className="font-semibold">{formatCurrency(interest)}</span>
+                  <span className="text-gray-300">Duration</span>
+                  <span className="font-semibold">{loanSummary.durationLabel}</span>
                 </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-300">Interest Rate</span>
+                  <span className="font-semibold">{loanSummary.interestRate}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-300">Interest Amount</span>
+                  <span className="font-semibold">{formatCurrency(loanSummary.interestAmount)}</span>
+                </div>
+                <hr className="border-white/20" />
                 <div className="flex justify-between text-lg">
                   <span className="font-semibold">Total to Repay</span>
-                  <span className="font-bold text-[#D4AF37]">{formatCurrency(totalPayable)}</span>
+                  <span className="font-bold text-[#D4AF37]">{formatCurrency(loanSummary.totalPayable)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-300">Repayment Period</span>
-                  <span>{selectedProduct.repaymentDays} days</span>
+                  <span className="text-gray-300">Due Date</span>
+                  <span>{loanSummary.dueDate.toLocaleDateString()}</span>
                 </div>
               </div>
             </Card>
           )}
 
-          {/* Collateral Warning */}
+          <Card className="p-4 bg-orange-50 border border-orange-200">
+            <div className="flex items-start gap-3">
+              <AlertCircle className="h-5 w-5 text-orange-600 mt-0.5" />
+              <div className="text-sm">
+                <p className="font-medium text-orange-800">Late Payment Warning</p>
+                <p className="text-orange-700 mt-1">
+                  If you miss your due date, the interest rate will automatically escalate weekly:
+                </p>
+                <ul className="text-orange-700 mt-2 space-y-1 list-disc list-inside">
+                  <li>Week 1 late: 10% → 25%</li>
+                  <li>Week 2 late: → 35%</li>
+                  <li>Week 3 late: → 45%</li>
+                  <li>Week 4+ late: Credit Bureau reporting</li>
+                </ul>
+              </div>
+            </div>
+          </Card>
+
           {needsCollateral && (
             <Card className="p-4 bg-yellow-50 border border-yellow-200">
               <div className="flex items-start gap-3">
@@ -482,7 +560,6 @@ export default function ApplyForLoanPage() {
             </Card>
           )}
 
-          {/* KYC Documents */}
           <Card className="p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">KYC Documents</h2>
             
@@ -539,20 +616,18 @@ export default function ApplyForLoanPage() {
             </div>
           </Card>
 
-          {/* Terms */}
           <Card className="p-4 bg-gray-50">
             <p className="text-sm text-gray-600">
               By submitting this application, you agree to our Terms & Conditions including:
             </p>
             <ul className="text-sm text-gray-600 mt-2 space-y-1">
-              <li>• 5% non-refundable processing fee</li>
-              <li>• {selectedProduct.interestRate}% interest rate for {selectedProduct.repaymentDays} days</li>
-              <li>• 10% weekly penalty for late payments</li>
-              <li>• Your data may be shared with recovery partners if default occurs</li>
+              <li>• 5% non-refundable processing fee (deducted from disbursement)</li>
+              <li>• Interest rate based on selected duration</li>
+              <li>• Weekly interest escalation for late payments</li>
+              <li>• Credit Bureau reporting after 4 weeks default</li>
             </ul>
           </Card>
 
-          {/* Submit Button */}
           <Button
             type="submit"
             className="w-full bg-[#00A86B] hover:bg-[#008f5b] py-4 text-lg"

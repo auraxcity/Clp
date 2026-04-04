@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { LoanStatusChart } from '@/components/dashboard/LoanStatusChart';
@@ -23,6 +23,7 @@ import {
   Target,
   Percent,
   Building,
+  RefreshCw,
 } from 'lucide-react';
 import { 
   getSystemStats, 
@@ -31,70 +32,85 @@ import {
   getBorrowers, 
   getInvestors,
   subscribeToStats,
-  initializeSystemStats,
+  updateSystemStats,
 } from '@/lib/firebase-service';
 import { Loan, SystemStats } from '@/types';
+import { Button } from '@/components/ui/Button';
 
 export default function DashboardPage() {
   const { loans, setLoans, payments, setPayments, stats, setStats, setBorrowers, setInvestors } = useStore();
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [loansDueToday, setLoansDueToday] = useState<Loan[]>([]);
   const [loansDueThisWeek, setLoansDueThisWeek] = useState<Loan[]>([]);
   const [lateLoans, setLateLoans] = useState<Loan[]>([]);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
+  const loadData = useCallback(async (showRefresh = false) => {
+    try {
+      if (showRefresh) setIsRefreshing(true);
+      
+      await updateSystemStats();
+      
+      const [loansData, paymentsData, borrowersData, investorsData, statsData] = await Promise.all([
+        getLoans(),
+        getPayments(),
+        getBorrowers(),
+        getInvestors(),
+        getSystemStats(),
+      ]);
+
+      setLoans(loansData);
+      setPayments(paymentsData);
+      setBorrowers(borrowersData);
+      setInvestors(investorsData);
+      if (statsData) setStats(statsData);
+
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const weekFromNow = new Date(today);
+      weekFromNow.setDate(weekFromNow.getDate() + 7);
+
+      const activeLoans = loansData.filter(l => ['active', 'due_soon', 'late'].includes(l.status));
+      
+      setLoansDueToday(activeLoans.filter(l => {
+        const dueDate = new Date(l.dueDate);
+        dueDate.setHours(0, 0, 0, 0);
+        return dueDate.getTime() === today.getTime();
+      }));
+
+      setLoansDueThisWeek(activeLoans.filter(l => {
+        const dueDate = new Date(l.dueDate);
+        return dueDate >= today && dueDate <= weekFromNow;
+      }));
+
+      setLateLoans(loansData.filter(l => l.status === 'late'));
+      setLastUpdated(new Date());
+    } catch (error) {
+      console.error('Failed to load dashboard data:', error);
+    } finally {
+      setIsLoading(false);
+      setIsRefreshing(false);
+    }
+  }, [setLoans, setPayments, setBorrowers, setInvestors, setStats]);
 
   useEffect(() => {
-    async function loadData() {
-      try {
-        await initializeSystemStats();
-        
-        const [loansData, paymentsData, borrowersData, investorsData, statsData] = await Promise.all([
-          getLoans(),
-          getPayments(),
-          getBorrowers(),
-          getInvestors(),
-          getSystemStats(),
-        ]);
-
-        setLoans(loansData);
-        setPayments(paymentsData);
-        setBorrowers(borrowersData);
-        setInvestors(investorsData);
-        if (statsData) setStats(statsData);
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const weekFromNow = new Date(today);
-        weekFromNow.setDate(weekFromNow.getDate() + 7);
-
-        const activeLoans = loansData.filter(l => ['active', 'due_soon', 'late'].includes(l.status));
-        
-        setLoansDueToday(activeLoans.filter(l => {
-          const dueDate = new Date(l.dueDate);
-          dueDate.setHours(0, 0, 0, 0);
-          return dueDate.getTime() === today.getTime();
-        }));
-
-        setLoansDueThisWeek(activeLoans.filter(l => {
-          const dueDate = new Date(l.dueDate);
-          return dueDate >= today && dueDate <= weekFromNow;
-        }));
-
-        setLateLoans(loansData.filter(l => l.status === 'late'));
-      } catch (error) {
-        console.error('Failed to load dashboard data:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
     loadData();
 
     const unsubscribe = subscribeToStats((newStats) => {
       setStats(newStats);
+      setLastUpdated(new Date());
     });
 
-    return () => unsubscribe();
-  }, [setLoans, setPayments, setBorrowers, setInvestors, setStats]);
+    const refreshInterval = setInterval(() => {
+      loadData();
+    }, 60000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(refreshInterval);
+    };
+  }, [loadData, setStats]);
 
   const activeLoansCount = loans.filter(l => ['active', 'due_soon', 'late'].includes(l.status)).length;
   const lateLoansCount = loans.filter(l => l.status === 'late').length;
@@ -123,6 +139,9 @@ export default function DashboardPage() {
     totalLoansEverIssued: 0,
     totalAmountEverDisbursed: 0,
     totalAmountEverRepaid: 0,
+    totalActiveInvestments: 0,
+    totalInvestmentValue: 0,
+    totalPendingWithdrawals: 0,
     updatedAt: new Date(),
   };
 
@@ -142,9 +161,25 @@ export default function DashboardPage() {
     <DashboardLayout>
       <div className="space-y-6">
         {/* Page Header */}
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">Welcome back! Here&apos;s your lending portfolio overview.</p>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-gray-500 mt-1">Welcome back! Here&apos;s your lending portfolio overview.</p>
+            {lastUpdated && (
+              <p className="text-xs text-gray-400 mt-1">
+                Last updated: {lastUpdated.toLocaleTimeString()}
+              </p>
+            )}
+          </div>
+          <Button 
+            onClick={() => loadData(true)} 
+            variant="outline" 
+            disabled={isRefreshing}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {isRefreshing ? 'Refreshing...' : 'Refresh Stats'}
+          </Button>
         </div>
 
         {/* Primary Stats Row */}
@@ -154,11 +189,13 @@ export default function DashboardPage() {
             value={currentStats.totalActiveLoans}
             icon={<Wallet className="h-6 w-6 text-white" />}
             iconBgColor="bg-[#0A1F44]"
+            isLoading={isRefreshing}
           />
           <StatCard
             title="Capital Deployed"
             value={formatCurrency(currentStats.totalCapitalDeployed)}
             icon={<DollarSign className="h-6 w-6 text-white" />}
+            isLoading={isRefreshing}
             iconBgColor="bg-[#00A86B]"
           />
           <StatCard

@@ -67,9 +67,9 @@ export default function AuditLogsPage() {
   const filteredLogs = logs.filter((log) => {
     const matchesType = filterType === 'all' || log.entityType === filterType;
     const matchesSearch =
-      log.action.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.performedByName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      log.entityId.toLowerCase().includes(searchQuery.toLowerCase());
+      (log.action ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (log.performedByName ?? '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (log.entityId ?? '').toLowerCase().includes(searchQuery.toLowerCase());
     return matchesType && matchesSearch;
   });
 
