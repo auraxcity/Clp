@@ -80,6 +80,7 @@ export default function AdminManagementPage() {
       const userData = await getUserById(user.uid);
       if (!userData || userData.role !== 'super_admin') {
         toast.error('Access denied. Super Admin only.');
+        setIsLoading(false);
         router.push('/dashboard');
         return;
       }
@@ -121,7 +122,7 @@ export default function AdminManagementPage() {
       await createUserWithId(user.uid, {
         fullName: formData.fullName,
         email: formData.email,
-        phone: formData.phone,
+        phone: formData.phone.trim() || formData.email || 'admin',
         role: formData.role,
         permissions: formData.permissions,
         isActive: true,

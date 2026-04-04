@@ -15,6 +15,7 @@ import {
   writeBatch,
   increment,
   onSnapshot,
+  deleteField,
   DocumentData,
   Firestore,
 } from 'firebase/firestore';
@@ -582,36 +583,73 @@ export async function updateLoan(id: string, data: Partial<Loan>, performedBy?: 
   }
 }
 
-export async function approveLoan(loanId: string, investorId: string, adminId: string, adminName: string): Promise<void> {
+export async function approveLoan(
+  loanId: string,
+  investorId: string | null,
+  adminId: string,
+  adminName: string
+): Promise<void> {
   const loan = await getLoan(loanId);
   if (!loan) throw new Error('Loan not found');
-  
+
+  const companyFunded = loan.fundingSource === 'company';
+
+  if (companyFunded) {
+    const batch = writeBatch(getDb());
+    batch.update(doc(getDb(), 'loans', loanId), {
+      status: 'approved',
+      fundingSource: 'company',
+      investorId: deleteField(),
+      investorName: deleteField(),
+      approvedBy: adminId,
+      approvedAt: Timestamp.now(),
+      updatedAt: Timestamp.now(),
+    });
+    await batch.commit();
+
+    await createAuditLog({
+      action: 'loan_approved',
+      entityType: 'loan',
+      entityId: loanId,
+      performedBy: adminId,
+      performedByName: adminName,
+      details: { fundingSource: 'company', amount: loan.principalAmount },
+    });
+    await updateSystemStats();
+    return;
+  }
+
+  if (!investorId) {
+    throw new Error('Select an investor for investor-funded loans');
+  }
+
   const investor = await getInvestor(investorId);
   if (!investor) throw new Error('Investor not found');
-  
+
   if (investor.capitalAvailable < loan.principalAmount) {
     throw new Error('Insufficient investor capital');
   }
-  
+
   const batch = writeBatch(getDb());
-  
+
   batch.update(doc(getDb(), 'loans', loanId), {
     status: 'approved',
+    fundingSource: loan.fundingSource ?? 'investor_funded',
     investorId,
     investorName: investor.name,
     approvedBy: adminId,
     approvedAt: Timestamp.now(),
     updatedAt: Timestamp.now(),
   });
-  
+
   batch.update(doc(getDb(), 'investors', investorId), {
     capitalDeployed: increment(loan.principalAmount),
     capitalAvailable: increment(-loan.principalAmount),
     updatedAt: Timestamp.now(),
   });
-  
+
   await batch.commit();
-  
+
   await createAuditLog({
     action: 'loan_approved',
     entityType: 'loan',
@@ -620,7 +658,7 @@ export async function approveLoan(loanId: string, investorId: string, adminId: s
     performedByName: adminName,
     details: { investorId, amount: loan.principalAmount },
   });
-  
+
   await updateSystemStats();
 }
 

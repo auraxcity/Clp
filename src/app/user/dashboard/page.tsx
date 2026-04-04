@@ -16,20 +16,20 @@ import {
   History,
   CreditCard,
   LogOut,
-  User,
   Copy,
   Gift,
   TrendingUp
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import Link from 'next/link';
-import { formatCurrency, formatDate } from '@/lib/utils';
-import { Loan, Borrower } from '@/types';
+import { formatCurrency, formatDate, resolvePersonDisplayName } from '@/lib/utils';
+import { Loan, Borrower, type User as AppUser } from '@/types';
 
 export default function UserDashboard() {
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
   const [borrower, setBorrower] = useState<Borrower | null>(null);
+  const [profileUser, setProfileUser] = useState<AppUser | null>(null);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -52,9 +52,15 @@ export default function UserDashboard() {
     try {
       const db = getDb();
       
-      const borrowerDoc = await getDoc(doc(db, 'borrowers', uid));
+      const [borrowerDoc, userDoc] = await Promise.all([
+        getDoc(doc(db, 'borrowers', uid)),
+        getDoc(doc(db, 'users', uid)),
+      ]);
       if (borrowerDoc.exists()) {
         setBorrower({ id: borrowerDoc.id, ...borrowerDoc.data() } as Borrower);
+      }
+      if (userDoc.exists()) {
+        setProfileUser({ id: userDoc.id, ...userDoc.data() } as AppUser);
       }
 
       const loansQuery = query(
@@ -120,7 +126,9 @@ export default function UserDashboard() {
             
             <div className="flex items-center gap-4">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium">{borrower?.fullName || 'User'}</p>
+                <p className="text-sm font-medium">
+                  {resolvePersonDisplayName(profileUser?.fullName, borrower?.fullName)}
+                </p>
                 <p className="text-xs text-gray-300">{borrower?.phone}</p>
               </div>
               <button
@@ -139,7 +147,8 @@ export default function UserDashboard() {
         {/* Welcome Section */}
         <div className="mb-8">
           <h2 className="text-2xl font-bold text-gray-900">
-            Welcome, {borrower?.fullName?.split(' ')[0] || 'User'}!
+            Welcome,{' '}
+            {resolvePersonDisplayName(profileUser?.fullName, borrower?.fullName).split(' ')[0] || 'there'}!
           </h2>
           <p className="text-gray-600 mt-1">Manage your loans and payments</p>
         </div>

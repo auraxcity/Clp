@@ -12,6 +12,9 @@ export type LoanProduct = 'quick_cash' | 'business_boost' | 'investor_backed_pre
 
 export type InvestmentStatus = 'active' | 'matured' | 'withdrawn' | 'reinvested';
 
+/** Company-funded loans skip investor capital allocation; investor-funded ties to an investor at approval. */
+export type LoanFundingSource = 'investor_funded' | 'company';
+
 export type WithdrawalStatus = 'pending' | 'processing' | 'completed' | 'rejected';
 
 export interface User {
@@ -139,6 +142,8 @@ export interface Loan {
   borrowerId: string;
   borrowerName: string;
   borrowerPhone: string;
+  /** When omitted, pending loans are treated as investor-funded (legacy behaviour). */
+  fundingSource?: LoanFundingSource;
   investorId?: string;
   investorName?: string;
   loanProduct: LoanProduct;

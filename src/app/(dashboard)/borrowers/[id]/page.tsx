@@ -5,12 +5,12 @@ import { useParams, useRouter } from 'next/navigation';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { getBorrower, getLoansByBorrower, getPaymentsByBorrower } from '@/lib/firebase-service';
-import { Borrower, Loan, Payment, LOAN_PRODUCTS } from '@/types';
-import { formatCurrency, formatDate, getLoanStatusColor } from '@/lib/utils';
+import { getBorrower, getLoansByBorrower, getPaymentsByBorrower, getUserById } from '@/lib/firebase-service';
+import { Borrower, Loan, Payment, LOAN_PRODUCTS, type User as AppUser } from '@/types';
+import { formatCurrency, formatDate, getLoanStatusColor, resolvePersonDisplayName } from '@/lib/utils';
 import { 
   ArrowLeft,
-  User,
+  User as UserIcon,
   Phone,
   Mail,
   MapPin,
@@ -33,6 +33,7 @@ export default function BorrowerDetailPage() {
   const borrowerId = params.id as string;
 
   const [borrower, setBorrower] = useState<Borrower | null>(null);
+  const [profileUser, setProfileUser] = useState<AppUser | null>(null);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -47,6 +48,11 @@ export default function BorrowerDetailPage() {
         ]);
         
         setBorrower(borrowerData);
+        if (borrowerData) {
+          const uid = borrowerData.userId || borrowerId;
+          const u = await getUserById(uid);
+          setProfileUser(u as AppUser);
+        }
         setLoans(loansData);
         setPayments(paymentsData);
       } catch (error) {
@@ -116,10 +122,12 @@ export default function BorrowerDetailPage() {
         <div className="flex items-start justify-between">
           <div className="flex items-center gap-4">
             <div className="h-16 w-16 rounded-full bg-[#0A1F44] flex items-center justify-center">
-              <User className="h-8 w-8 text-white" />
+              <UserIcon className="h-8 w-8 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{borrower.fullName}</h1>
+              <h1 className="text-2xl font-bold text-gray-900">
+                {resolvePersonDisplayName(profileUser?.fullName, borrower.fullName)}
+              </h1>
               <p className="text-gray-500">{borrower.phone}</p>
             </div>
           </div>
@@ -170,15 +178,13 @@ export default function BorrowerDetailPage() {
                   <p className="font-medium text-gray-900">{borrower.phone}</p>
                 </div>
               </div>
-              {borrower.email && (
-                <div className="flex items-center gap-3">
-                  <Mail className="h-5 w-5 text-gray-400" />
-                  <div>
-                    <p className="text-sm text-gray-500">Email</p>
-                    <p className="font-medium text-gray-900">{borrower.email}</p>
-                  </div>
+              <div className="flex items-center gap-3">
+                <Mail className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-sm text-gray-500">Email</p>
+                  <p className="font-medium text-gray-900">{borrower.email || profileUser?.email || '—'}</p>
                 </div>
-              )}
+              </div>
               <div className="flex items-center gap-3">
                 <MapPin className="h-5 w-5 text-gray-400" />
                 <div>
@@ -186,25 +192,23 @@ export default function BorrowerDetailPage() {
                   <p className="font-medium text-gray-900">{borrower.location}</p>
                 </div>
               </div>
-              {borrower.nationalId && (
-                <div className="flex items-center gap-3">
-                  <CreditCard className="h-5 w-5 text-gray-400" />
-                  <div>
-                    <p className="text-sm text-gray-500">National ID</p>
-                    <p className="font-medium text-gray-900">{borrower.nationalId}</p>
-                  </div>
+              <div className="flex items-center gap-3">
+                <CreditCard className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-sm text-gray-500">National ID</p>
+                  <p className="font-medium text-gray-900">{borrower.nationalId || profileUser?.nationalId || '—'}</p>
                 </div>
-              )}
+              </div>
               {borrower.occupation && (
                 <div className="flex items-center gap-3">
-                  <User className="h-5 w-5 text-gray-400" />
+                  <UserIcon className="h-5 w-5 text-gray-400" />
                   <div>
                     <p className="text-sm text-gray-500">Occupation</p>
                     <p className="font-medium text-gray-900">{borrower.occupation}</p>
                   </div>
                 </div>
               )}
-              {borrower.monthlyIncome && (
+              {borrower.monthlyIncome != null && borrower.monthlyIncome > 0 ? (
                 <div className="flex items-center gap-3">
                   <Wallet className="h-5 w-5 text-gray-400" />
                   <div>
@@ -212,42 +216,62 @@ export default function BorrowerDetailPage() {
                     <p className="font-medium text-gray-900">{formatCurrency(borrower.monthlyIncome)}</p>
                   </div>
                 </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <Wallet className="h-5 w-5 text-gray-400" />
+                  <div>
+                    <p className="text-sm text-gray-500">Monthly Income</p>
+                    <p className="font-medium text-gray-900">—</p>
+                  </div>
+                </div>
               )}
+              <div className="flex items-center gap-3 sm:col-span-2">
+                <Shield className="h-5 w-5 text-gray-400" />
+                <div>
+                  <p className="text-sm text-gray-500">Account KYC status</p>
+                  <p className="font-medium text-gray-900">{profileUser?.kycVerified ? 'Verified' : 'Not verified'}</p>
+                </div>
+              </div>
             </div>
           </Card>
 
-          {/* KYC Documents */}
-          {(borrower.nationalIdImageUrl || borrower.selfieUrl) && (
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">KYC Documents</h2>
-              <div className="grid grid-cols-2 gap-4">
-                {borrower.nationalIdImageUrl && (
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">National ID</p>
-                    <a href={borrower.nationalIdImageUrl} target="_blank" rel="noopener noreferrer">
-                      <img 
-                        src={borrower.nationalIdImageUrl} 
-                        alt="National ID" 
-                        className="w-full h-48 object-cover rounded-lg border hover:opacity-90 transition-opacity"
-                      />
-                    </a>
-                  </div>
-                )}
-                {borrower.selfieUrl && (
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Selfie</p>
-                    <a href={borrower.selfieUrl} target="_blank" rel="noopener noreferrer">
-                      <img 
-                        src={borrower.selfieUrl} 
-                        alt="Selfie" 
-                        className="w-full h-48 object-cover rounded-lg border hover:opacity-90 transition-opacity"
-                      />
-                    </a>
-                  </div>
-                )}
-              </div>
-            </Card>
-          )}
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">KYC documents</h2>
+            <div className="grid grid-cols-2 gap-4">
+              {borrower.nationalIdImageUrl ? (
+                <div>
+                  <p className="text-sm text-gray-500 mb-2">National ID</p>
+                  <a href={borrower.nationalIdImageUrl} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={borrower.nationalIdImageUrl}
+                      alt="National ID"
+                      className="w-full h-48 object-cover rounded-lg border hover:opacity-90 transition-opacity"
+                    />
+                  </a>
+                </div>
+              ) : (
+                <div className="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                  National ID image not uploaded
+                </div>
+              )}
+              {borrower.selfieUrl ? (
+                <div>
+                  <p className="text-sm text-gray-500 mb-2">Selfie</p>
+                  <a href={borrower.selfieUrl} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={borrower.selfieUrl}
+                      alt="Selfie"
+                      className="w-full h-48 object-cover rounded-lg border hover:opacity-90 transition-opacity"
+                    />
+                  </a>
+                </div>
+              ) : (
+                <div className="flex min-h-[12rem] items-center justify-center rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500">
+                  Selfie not uploaded
+                </div>
+              )}
+            </div>
+          </Card>
 
           {/* Loan History */}
           <Card className="p-6">

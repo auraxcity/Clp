@@ -1,8 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
-import { getAuthInstance } from '@/lib/firebase';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { doc, setDoc, Timestamp } from 'firebase/firestore';
+import { getAuthInstance, getDb } from '@/lib/firebase';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -36,6 +37,9 @@ const investorSchema = z.object({
   phone: z.string().min(10, 'Valid phone required'),
   email: z.string().email().optional().or(z.literal('')),
   loginPassword: z.string().min(6, 'Min 6 characters').optional().or(z.literal('')),
+  nationalId: z.string().optional(),
+  location: z.string().optional(),
+  occupation: z.string().optional(),
   capitalCommitted: z.string().min(1, 'Capital amount is required'),
   notes: z.string().optional(),
 });
@@ -89,13 +93,30 @@ export default function InvestorsPage() {
       if (email && loginPassword) {
         const { user } = await createUserWithEmailAndPassword(getAuthInstance(), email, loginPassword);
         authUserId = user.uid;
+        await updateProfile(user, { displayName: data.name });
+        const db = getDb();
+        await setDoc(doc(db, 'users', user.uid), {
+          email,
+          phone: data.phone,
+          fullName: data.name,
+          role: 'investor',
+          nationalId: data.nationalId?.trim() || undefined,
+          location: data.location?.trim() || undefined,
+          isActive: true,
+          kycVerified: false,
+          createdAt: Timestamp.now(),
+          updatedAt: Timestamp.now(),
+        });
       }
-      
+
       const investorData: Omit<Investor, 'id' | 'createdAt' | 'updatedAt'> = {
         name: data.name,
         phone: data.phone,
         email: email || undefined,
         authUserId,
+        nationalId: data.nationalId?.trim() || undefined,
+        location: data.location?.trim() || undefined,
+        occupation: data.occupation?.trim() || undefined,
         capitalCommitted: capitalAmount,
         capitalDeployed: 0,
         capitalAvailable: capitalAmount,
@@ -373,9 +394,14 @@ export default function InvestorsPage() {
           isOpen={showAddModal}
           onClose={() => setShowAddModal(false)}
           title="Add New Investor"
-          size="md"
+          size="lg"
         >
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
+            <p className="text-sm text-gray-600 bg-gray-50 rounded-lg p-3">
+              Match the investor&apos;s sheet record here. If you add <strong>email + password</strong>, a{' '}
+              <strong>users</strong> profile is created and they can sign in at{' '}
+              <span className="font-mono text-xs">/investor/login</span> — the dashboard will show these amounts and details.
+            </p>
             <Input
               label="Full Name *"
               placeholder="Enter investor name"
@@ -396,9 +422,24 @@ export default function InvestorsPage() {
               {...register('email')}
             />
             <Input
+              label="National ID"
+              placeholder="Optional"
+              {...register('nationalId')}
+            />
+            <Input
+              label="Location"
+              placeholder="District / address"
+              {...register('location')}
+            />
+            <Input
+              label="Occupation"
+              placeholder="Optional"
+              {...register('occupation')}
+            />
+            <Input
               label="Login password (optional – for investor portal)"
               type="password"
-              placeholder="Min 6 characters"
+              placeholder="Min 6 characters; required with email for login"
               error={errors.loginPassword?.message}
               {...register('loginPassword')}
             />
@@ -452,7 +493,16 @@ export default function InvestorsPage() {
                   {selectedInvestor.email && (
                     <p className="text-gray-500 text-sm">{selectedInvestor.email}</p>
                   )}
+                  {selectedInvestor.authUserId && (
+                    <p className="text-xs text-green-700 mt-1">Portal login linked</p>
+                  )}
                 </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm text-gray-600">
+                <p><span className="text-gray-400">National ID:</span> {selectedInvestor.nationalId || '—'}</p>
+                <p><span className="text-gray-400">Location:</span> {selectedInvestor.location || '—'}</p>
+                <p><span className="text-gray-400">Occupation:</span> {selectedInvestor.occupation || '—'}</p>
               </div>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

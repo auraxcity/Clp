@@ -1,26 +1,31 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { submitPesapalOrder, generateOrderId, getRegisteredIPNs, registerIPN } from '@/lib/pesapal';
-import { addDoc, collection, Timestamp } from 'firebase/firestore';
-import { getDb } from '@/lib/firebase';
+import { getAdminDb } from '@/lib/firebase-admin';
+import * as admin from 'firebase-admin';
+
+export const runtime = 'nodejs';
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { 
-      amount, 
-      description, 
-      email, 
-      phone, 
-      firstName, 
+    const {
+      amount,
+      description,
+      email,
+      phone,
+      firstName,
       lastName,
       relatedEntityType,
       relatedEntityId,
     } = body;
 
     if (!amount || !description || !relatedEntityType || !relatedEntityId) {
-      return NextResponse.json({ 
-        error: 'Missing required fields: amount, description, relatedEntityType, relatedEntityId' 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: 'Missing required fields: amount, description, relatedEntityType, relatedEntityId',
+        },
+        { status: 400 }
+      );
     }
 
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin;
@@ -28,7 +33,7 @@ export async function POST(request: NextRequest) {
     const ipnUrl = `${baseUrl}/api/pesapal/ipn`;
 
     let ipnList = await getRegisteredIPNs();
-    let notificationId = ipnList.find(ipn => ipn.url === ipnUrl)?.ipn_id;
+    let notificationId = ipnList.find((ipn) => ipn.url === ipnUrl)?.ipn_id;
 
     if (!notificationId) {
       const ipnResponse = await registerIPN({
@@ -58,13 +63,17 @@ export async function POST(request: NextRequest) {
     const orderResponse = await submitPesapalOrder(orderRequest);
 
     if (orderResponse.error) {
-      return NextResponse.json({ 
-        error: orderResponse.error.message 
-      }, { status: 400 });
+      return NextResponse.json(
+        {
+          error: orderResponse.error.message,
+        },
+        { status: 400 }
+      );
     }
 
-    const db = getDb();
-    await addDoc(collection(db, 'pesapalTransactions'), {
+    const db = getAdminDb();
+    const now = admin.firestore.Timestamp.now();
+    await db.collection('pesapalTransactions').add({
       orderId: orderId,
       trackingId: orderResponse.order_tracking_id,
       merchantReference: orderResponse.merchant_reference,
@@ -75,8 +84,8 @@ export async function POST(request: NextRequest) {
       relatedEntityType: relatedEntityType,
       relatedEntityId: relatedEntityId,
       callbackReceived: false,
-      createdAt: Timestamp.now(),
-      updatedAt: Timestamp.now(),
+      createdAt: now,
+      updatedAt: now,
     });
 
     return NextResponse.json({
@@ -87,8 +96,11 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('PesaPal submit order error:', error);
-    return NextResponse.json({ 
-      error: error instanceof Error ? error.message : 'Failed to submit order' 
-    }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : 'Failed to submit order',
+      },
+      { status: 500 }
+    );
   }
 }

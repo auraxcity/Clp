@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { getAuthInstance } from '@/lib/firebase';
-import { getInvestorByAuthUserId } from '@/lib/firebase-service';
+import { getInvestorByAuthUserId, getInvestorByEmail, updateInvestor } from '@/lib/firebase-service';
 import { PiggyBank, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import Link from 'next/link';
@@ -33,7 +33,14 @@ export default function InvestorLoginPage() {
       const auth = getAuthInstance();
       const { user } = await signInWithEmailAndPassword(auth, email, password);
       
-      const investor = await getInvestorByAuthUserId(user.uid);
+      let investor = await getInvestorByAuthUserId(user.uid);
+      if (!investor && user.email) {
+        const byEmail = await getInvestorByEmail(user.email);
+        if (byEmail) {
+          await updateInvestor(byEmail.id, { authUserId: user.uid });
+          investor = { ...byEmail, authUserId: user.uid };
+        }
+      }
       if (!investor) {
         toast.error('No investor account found. Please sign up first.');
         setIsLoading(false);

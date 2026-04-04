@@ -64,17 +64,19 @@ export default function LoansPage() {
   };
 
   const handleApprove = async () => {
-    if (!selectedLoan || !selectedInvestor) {
+    if (!selectedLoan) return;
+    const companyFunded = selectedLoan.fundingSource === 'company';
+    if (!companyFunded && !selectedInvestor) {
       toast.error('Please select an investor');
       return;
     }
 
     try {
       await approveLoan(
-        selectedLoan.id, 
-        selectedInvestor, 
-        'admin', // TODO: Get actual admin ID
-        'Admin User' // TODO: Get actual admin name
+        selectedLoan.id,
+        companyFunded ? null : selectedInvestor,
+        'admin',
+        'Admin User'
       );
       
       const updatedLoans = await getLoans();
@@ -310,22 +312,30 @@ export default function LoansPage() {
                 </p>
               </div>
 
-              <Select
-                label="Select Investor to Fund This Loan *"
-                options={availableInvestors.map((i) => ({
-                  value: i.id,
-                  label: `${i.name} (Available: ${formatCurrency(i.capitalAvailable)})`,
-                }))}
-                placeholder="Choose an investor"
-                value={selectedInvestor}
-                onChange={(e) => setSelectedInvestor(e.target.value)}
-              />
-
-              {availableInvestors.length === 0 && (
-                <div className="p-3 bg-yellow-50 rounded-lg text-yellow-800 text-sm">
-                  <AlertTriangle className="h-4 w-4 inline mr-2" />
-                  No investors have sufficient capital for this loan amount.
+              {selectedLoan.fundingSource === 'company' ? (
+                <div className="p-3 bg-blue-50 rounded-lg text-blue-900 text-sm">
+                  This loan uses <strong>company capital</strong>. No investor will be assigned; capital is not deducted from any investor pool.
                 </div>
+              ) : (
+                <>
+                  <Select
+                    label="Select Investor to Fund This Loan *"
+                    options={availableInvestors.map((i) => ({
+                      value: i.id,
+                      label: `${i.name} (Available: ${formatCurrency(i.capitalAvailable)})`,
+                    }))}
+                    placeholder="Choose an investor"
+                    value={selectedInvestor}
+                    onChange={(e) => setSelectedInvestor(e.target.value)}
+                  />
+
+                  {availableInvestors.length === 0 && (
+                    <div className="p-3 bg-yellow-50 rounded-lg text-yellow-800 text-sm">
+                      <AlertTriangle className="h-4 w-4 inline mr-2" />
+                      No investors have sufficient capital for this loan amount.
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="flex gap-3 pt-4">
@@ -338,7 +348,9 @@ export default function LoansPage() {
                 </Button>
                 <Button
                   onClick={handleApprove}
-                  disabled={!selectedInvestor}
+                  disabled={
+                    selectedLoan.fundingSource !== 'company' && !selectedInvestor
+                  }
                   className="flex-1"
                 >
                   Approve Loan

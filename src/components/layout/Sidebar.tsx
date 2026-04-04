@@ -1,7 +1,10 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { signOut } from 'firebase/auth';
+import { getAuthInstance } from '@/lib/firebase';
+import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
 import { useStore } from '@/store/useStore';
 import {
@@ -38,14 +41,26 @@ const navigation = [
 
 const adminNavigation = [
   { name: 'Admin Management', href: '/admin-management', icon: UserCog, superAdminOnly: true },
-  { name: 'Database', href: '/database', icon: Database, superAdminOnly: true },
+  { name: 'Database', href: '/database', icon: Database, superAdminOnly: false },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { sidebarOpen, setSidebarOpen, user } = useStore();
+  const router = useRouter();
+  const { sidebarOpen, setSidebarOpen, user, setUser } = useStore();
   const isSuperAdmin = user?.role === 'super_admin';
+
+  const handleLogout = async () => {
+    try {
+      await signOut(getAuthInstance());
+      setUser(null);
+      toast.success('Logged out');
+      router.push('/login');
+    } catch {
+      toast.error('Failed to logout');
+    }
+  };
 
   return (
     <aside
@@ -157,7 +172,12 @@ export function Sidebar() {
                   {isSuperAdmin ? 'Super Admin' : 'Admin'}
                 </p>
               </div>
-              <button className="p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
+                title="Log out"
+              >
                 <LogOut className="h-4 w-4 text-gray-400" />
               </button>
             </div>

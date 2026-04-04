@@ -64,6 +64,13 @@ export function LoanCard({ loan, onApprove, onDisburse, showActions = false }: L
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getLoanStatusColor(loan.status)}`}>
               {loan.status.replace('_', ' ')}
             </span>
+            {loan.fundingSource === 'company' && (
+              <span className="text-xs font-medium text-blue-700 bg-blue-50 px-2 py-0.5 rounded">Company</span>
+            )}
+            {(loan.fundingSource === 'investor_funded' ||
+              (!loan.fundingSource && loan.investorId)) && (
+              <span className="text-xs font-medium text-amber-800 bg-amber-50 px-2 py-0.5 rounded">Investor</span>
+            )}
             <span className="text-xs text-gray-400">
               {product?.name || loan.loanProduct}
             </span>

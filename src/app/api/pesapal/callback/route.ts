@@ -1,35 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getTransactionStatus, isPesapalPaymentComplete } from '@/lib/pesapal';
-import { 
-  doc, 
-  getDoc, 
-  updateDoc, 
-  collection, 
-  query, 
-  where, 
-  getDocs,
-  Timestamp 
-} from 'firebase/firestore';
-import { getDb } from '@/lib/firebase';
+import { getAdminDb } from '@/lib/firebase-admin';
+import * as admin from 'firebase-admin';
+
+export const runtime = 'nodejs';
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const orderTrackingId = searchParams.get('OrderTrackingId');
-    const orderMerchantReference = searchParams.get('OrderMerchantReference');
 
     if (!orderTrackingId) {
       return NextResponse.redirect(new URL('/payment-failed?error=missing_tracking_id', request.url));
     }
 
     const status = await getTransactionStatus(orderTrackingId);
-    const db = getDb();
+    const db = getAdminDb();
 
-    const txQuery = query(
-      collection(db, 'pesapalTransactions'),
-      where('trackingId', '==', orderTrackingId)
-    );
-    const txSnapshot = await getDocs(txQuery);
+    const txSnapshot = await db
+      .collection('pesapalTransactions')
+      .where('trackingId', '==', orderTrackingId)
+      .limit(1)
+      .get();
 
     let redirectUrl = '/user/dashboard';
     let entityType = 'payment';
@@ -41,79 +33,80 @@ export async function GET(request: NextRequest) {
 
       const isComplete = isPesapalPaymentComplete(status.status_code);
 
-      await updateDoc(doc(db, 'pesapalTransactions', txDoc.id), {
+      await txDoc.ref.update({
         status: isComplete ? 'completed' : 'pending',
         statusCode: status.status_code,
         paymentMethod: status.payment_method,
-        updatedAt: Timestamp.now(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       if (isComplete) {
         if (txData.relatedEntityType === 'payment') {
-          const paymentRef = doc(db, 'payments', txData.relatedEntityId);
-          const paymentDoc = await getDoc(paymentRef);
-          
-          if (paymentDoc.exists()) {
-            const paymentData = paymentDoc.data();
-            
-            await updateDoc(paymentRef, {
+          const paymentRef = db.collection('payments').doc(txData.relatedEntityId);
+          const paymentDoc = await paymentRef.get();
+
+          if (paymentDoc.exists) {
+            const paymentData = paymentDoc.data()!;
+
+            await paymentRef.update({
               status: 'approved',
-              approvedAt: Timestamp.now(),
+              approvedAt: admin.firestore.Timestamp.now(),
               approvedBy: 'pesapal_auto',
               pesapalTransactionId: status.confirmation_code,
             });
 
-            const loanRef = doc(db, 'loans', paymentData.loanId);
-            const loanDoc = await getDoc(loanRef);
-            
-            if (loanDoc.exists()) {
-              const loanData = loanDoc.data();
+            const loanRef = db.collection('loans').doc(paymentData.loanId);
+            const loanDoc = await loanRef.get();
+
+            if (loanDoc.exists) {
+              const loanData = loanDoc.data()!;
               const newBalance = Math.max(0, loanData.outstandingBalance - paymentData.amount);
-              
+
               const loanUpdate: Record<string, unknown> = {
                 outstandingBalance: newBalance,
-                updatedAt: Timestamp.now(),
+                updatedAt: admin.firestore.Timestamp.now(),
               };
-              
+
               if (newBalance <= 0) {
                 loanUpdate.status = 'closed';
-                loanUpdate.closedAt = Timestamp.now();
+                loanUpdate.closedAt = admin.firestore.Timestamp.now();
               }
-              
-              await updateDoc(loanRef, loanUpdate);
+
+              await loanRef.update(loanUpdate);
             }
           }
           redirectUrl = '/user/dashboard?payment=success';
         } else if (txData.relatedEntityType === 'investment') {
-          const investmentRef = doc(db, 'investments', txData.relatedEntityId);
-          
-          await updateDoc(investmentRef, {
+          const investmentRef = db.collection('investments').doc(txData.relatedEntityId);
+
+          await investmentRef.update({
             status: 'active',
             pesapalTransactionId: status.confirmation_code,
-            updatedAt: Timestamp.now(),
+            updatedAt: admin.firestore.Timestamp.now(),
           });
 
-          const investmentDoc = await getDoc(investmentRef);
-          if (investmentDoc.exists()) {
-            const investmentData = investmentDoc.data();
-            const investorRef = doc(db, 'investors', investmentData.investorId);
-            const investorDoc = await getDoc(investorRef);
-            
-            if (investorDoc.exists()) {
-              const investorData = investorDoc.data();
-              await updateDoc(investorRef, {
+          const investmentDoc = await investmentRef.get();
+          if (investmentDoc.exists) {
+            const investmentData = investmentDoc.data()!;
+            const investorRef = db.collection('investors').doc(investmentData.investorId);
+            const investorDoc = await investorRef.get();
+
+            if (investorDoc.exists) {
+              const investorData = investorDoc.data()!;
+              await investorRef.update({
                 capitalCommitted: (investorData.capitalCommitted || 0) + investmentData.amount,
                 capitalAvailable: (investorData.capitalAvailable || 0) + investmentData.amount,
-                updatedAt: Timestamp.now(),
+                updatedAt: admin.firestore.Timestamp.now(),
               });
             }
           }
           redirectUrl = '/investor/dashboard?investment=success';
         }
       } else {
-        redirectUrl = entityType === 'investment' 
-          ? '/investor/dashboard?payment=pending'
-          : '/user/dashboard?payment=pending';
+        redirectUrl =
+          entityType === 'investment'
+            ? '/investor/dashboard?payment=pending'
+            : '/user/dashboard?payment=pending';
       }
     }
 

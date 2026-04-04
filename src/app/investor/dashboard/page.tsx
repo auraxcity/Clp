@@ -14,10 +14,9 @@ import {
   updateDoc,
   onSnapshot,
   Timestamp,
-  orderBy 
 } from 'firebase/firestore';
 import { Investor, Investment, Loan, WithdrawalRequest, INVESTMENT_TERMS } from '@/types';
-import { formatCurrency, formatDate } from '@/lib/utils';
+import { formatCurrency, formatDate, getMinInvestmentAmount } from '@/lib/utils';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -41,6 +40,18 @@ import {
   CreditCard,
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+
+function firestoreTimeMs(v: unknown): number {
+  if (v != null && typeof (v as { toMillis?: () => number }).toMillis === 'function') {
+    return (v as { toMillis: () => number }).toMillis();
+  }
+  if (v instanceof Date) return v.getTime();
+  if (typeof v === 'string' || typeof v === 'number') {
+    const t = new Date(v).getTime();
+    return Number.isNaN(t) ? 0 : t;
+  }
+  return 0;
+}
 
 function AnimatedBalance({ value, label, prefix = 'UGX ' }: { value: number; label: string; prefix?: string }) {
   const [displayValue, setDisplayValue] = useState(0);
@@ -82,6 +93,7 @@ function AnimatedBalance({ value, label, prefix = 'UGX ' }: { value: number; lab
 function InvestorDashboardContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const minInvestment = getMinInvestmentAmount();
   const [investor, setInvestor] = useState<Investor | null>(null);
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [loans, setLoans] = useState<Loan[]>([]);
@@ -95,19 +107,19 @@ function InvestorDashboardContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState<'overview' | 'investments' | 'loans' | 'withdrawals'>('overview');
 
-  const loadInvestorData = useCallback(async (authUserId: string) => {
+  const loadInvestorData = useCallback(async (authUserId: string): Promise<(() => void) | undefined> => {
     try {
       const db = getDb();
-      
+
       const investorQuery = query(
         collection(db, 'investors'),
         where('authUserId', '==', authUserId)
       );
       const investorSnapshot = await getDocs(investorQuery);
-      
+
       if (investorSnapshot.empty) {
         router.push('/investor/login');
-        return;
+        return undefined;
       }
 
       const investorDoc = investorSnapshot.docs[0];
@@ -116,26 +128,28 @@ function InvestorDashboardContent() {
 
       const investmentsQuery = query(
         collection(db, 'investments'),
-        where('investorId', '==', investorDoc.id),
-        orderBy('createdAt', 'desc')
+        where('investorId', '==', investorDoc.id)
       );
       const investmentsSnapshot = await getDocs(investmentsQuery);
-      setInvestments(investmentsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Investment)));
+      const invList = investmentsSnapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Investment));
+      invList.sort((a, b) => firestoreTimeMs(b.createdAt) - firestoreTimeMs(a.createdAt));
+      setInvestments(invList);
 
       const loansQuery = query(
         collection(db, 'loans'),
         where('investorId', '==', investorDoc.id)
       );
       const loansSnapshot = await getDocs(loansQuery);
-      setLoans(loansSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as Loan)));
+      setLoans(loansSnapshot.docs.map((d) => ({ id: d.id, ...d.data() } as Loan)));
 
       const withdrawalsQuery = query(
         collection(db, 'withdrawalRequests'),
-        where('investorId', '==', investorDoc.id),
-        orderBy('requestedAt', 'desc')
+        where('investorId', '==', investorDoc.id)
       );
       const withdrawalsSnapshot = await getDocs(withdrawalsQuery);
-      setWithdrawals(withdrawalsSnapshot.docs.map(d => ({ id: d.id, ...d.data() } as WithdrawalRequest)));
+      const wList = withdrawalsSnapshot.docs.map((d) => ({ id: d.id, ...d.data() } as WithdrawalRequest));
+      wList.sort((a, b) => firestoreTimeMs(b.requestedAt) - firestoreTimeMs(a.requestedAt));
+      setWithdrawals(wList);
 
       const unsubscribe = onSnapshot(doc(db, 'investors', investorDoc.id), (snapshot) => {
         if (snapshot.exists()) {
@@ -148,21 +162,30 @@ function InvestorDashboardContent() {
     } catch (err) {
       console.error(err);
       toast.error('Failed to load investor data');
+      return undefined;
     } finally {
       setIsLoading(false);
     }
   }, [router]);
 
   useEffect(() => {
+    let removeDocListener: (() => void) | undefined;
     const auth = getAuthInstance();
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      removeDocListener?.();
+      removeDocListener = undefined;
       if (!user) {
         router.push('/investor/login');
+        setIsLoading(false);
         return;
       }
-      loadInvestorData(user.uid);
+      const cleanup = await loadInvestorData(user.uid);
+      if (typeof cleanup === 'function') removeDocListener = cleanup;
     });
-    return () => unsubscribe();
+    return () => {
+      unsubAuth();
+      removeDocListener?.();
+    };
   }, [router, loadInvestorData]);
 
   useEffect(() => {
@@ -192,8 +215,8 @@ function InvestorDashboardContent() {
     if (!investor) return;
 
     const amount = parseFloat(investmentAmount);
-    if (!amount || amount < 100000) {
-      toast.error('Minimum investment is UGX 100,000');
+    if (!amount || amount < minInvestment) {
+      toast.error(`Minimum investment is ${formatCurrency(minInvestment)}`);
       return;
     }
 
@@ -726,12 +749,15 @@ function InvestorDashboardContent() {
             </label>
             <Input
               type="number"
-              placeholder="Minimum 100,000"
+              placeholder={minInvestment <= 1 ? 'Any amount (testing)' : `Minimum ${formatCurrency(minInvestment)}`}
               value={investmentAmount}
               onChange={(e) => setInvestmentAmount(e.target.value)}
-              min={100000}
+              min={minInvestment}
             />
-            <p className="text-xs text-gray-500 mt-1">Minimum investment: UGX 100,000</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Minimum investment: {formatCurrency(minInvestment)}
+              {minInvestment <= 1 && ' — set NEXT_PUBLIC_MIN_INVESTMENT_AMOUNT for production (e.g. 100000).'}
+            </p>
           </div>
 
           <div>
@@ -795,7 +821,7 @@ function InvestorDashboardContent() {
             onClick={handleMakeInvestment}
             className="w-full bg-[#00A86B] hover:bg-[#008f5b]"
             isLoading={isSubmitting}
-            disabled={isSubmitting || investAmount < 100000}
+            disabled={isSubmitting || investAmount < minInvestment}
           >
             Proceed to Payment
           </Button>

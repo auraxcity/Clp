@@ -31,6 +31,27 @@ export function formatNumber(num: number): string {
   return new Intl.NumberFormat('en-UG').format(num);
 }
 
+/** Minimum investment (UGX). Set `NEXT_PUBLIC_MIN_INVESTMENT_AMOUNT` in production; defaults to 1 for testing. */
+export function getMinInvestmentAmount(): number {
+  const raw = typeof process !== 'undefined' ? process.env.NEXT_PUBLIC_MIN_INVESTMENT_AMOUNT : undefined;
+  if (raw !== undefined && raw !== '') {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n >= 0) return n;
+  }
+  return 1;
+}
+
+/** Prefer linked user profile name, then borrower record, then fallback. */
+export function resolvePersonDisplayName(
+  userFullName?: string | null,
+  recordFullName?: string | null,
+  fallback = 'User'
+): string {
+  const u = (userFullName || '').trim();
+  const r = (recordFullName || '').trim();
+  return u || r || fallback;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function toDate(date: any): Date | null {
   if (!date) return null;

@@ -258,6 +258,7 @@ export default function ApplyForLoanPage() {
         borrowerId: userId,
         borrowerName: borrowerName,
         borrowerPhone: borrowerPhone,
+        fundingSource: 'company',
         loanProduct: formData.loanProduct,
         principalAmount: amount,
         interestRate: loanSummary.interestRate,

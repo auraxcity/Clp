@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { createUserWithEmailAndPassword } from 'firebase/auth';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { doc, setDoc, Timestamp } from 'firebase/firestore';
 import { getAuthInstance, getDb } from '@/lib/firebase';
 import { Shield, Check, AlertCircle } from 'lucide-react';
@@ -49,24 +49,50 @@ export default function SetupPage() {
         },
       ];
 
+      const upsertAdminProfile = async (
+        uid: string,
+        admin: (typeof admins)[number],
+        isNew: boolean
+      ) => {
+        const base = {
+          email: admin.email,
+          phone: admin.phone || '',
+          fullName: admin.fullName,
+          role: admin.role,
+          permissions: admin.permissions,
+          isActive: true,
+          kycVerified: true,
+          updatedAt: Timestamp.now(),
+        };
+        if (isNew) {
+          await setDoc(doc(db, 'users', uid), {
+            ...base,
+            createdAt: Timestamp.now(),
+          });
+        } else {
+          await setDoc(doc(db, 'users', uid), base, { merge: true });
+        }
+      };
+
       for (const admin of admins) {
         try {
-          const userCredential = await createUserWithEmailAndPassword(auth, admin.email, admin.password);
-          await setDoc(doc(db, 'users', userCredential.user.uid), {
-            email: admin.email,
-            phone: admin.phone || '',
-            fullName: admin.fullName,
-            role: admin.role,
-            permissions: admin.permissions,
-            isActive: true,
-            kycVerified: true,
-            createdAt: Timestamp.now(),
-            updatedAt: Timestamp.now(),
-          });
+          const userCredential = await createUserWithEmailAndPassword(
+            auth,
+            admin.email,
+            admin.password
+          );
+          await upsertAdminProfile(userCredential.user.uid, admin, true);
         } catch (err) {
           const msg = err instanceof Error ? err.message : '';
           if (!msg.includes('email-already-in-use')) throw err;
+          const userCredential = await signInWithEmailAndPassword(
+            auth,
+            admin.email,
+            admin.password
+          );
+          await upsertAdminProfile(userCredential.user.uid, admin, false);
         }
+        await signOut(auth);
       }
 
       await setDoc(doc(db, 'system', 'stats'), {

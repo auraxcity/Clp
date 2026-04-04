@@ -9,12 +9,12 @@ import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { getLoan, getInvestors, approveLoan, disburseLoan, getPaymentsByLoan } from '@/lib/firebase-service';
-import { Loan, Investor, Payment, LOAN_PRODUCTS } from '@/types';
-import { formatCurrency, formatDate, getLoanStatusColor } from '@/lib/utils';
+import { getLoan, getInvestors, approveLoan, disburseLoan, getPaymentsByLoan, getBorrower, getUserById } from '@/lib/firebase-service';
+import { Loan, Investor, Payment, LOAN_PRODUCTS, Borrower, type User as AppUser } from '@/types';
+import { formatCurrency, formatDate, getLoanStatusColor, resolvePersonDisplayName } from '@/lib/utils';
 import { 
   ArrowLeft,
-  User,
+  User as UserIcon,
   Phone,
   MapPin,
   Calendar,
@@ -38,6 +38,8 @@ export default function LoanDetailPage() {
   const [loan, setLoan] = useState<Loan | null>(null);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [investors, setInvestors] = useState<Investor[]>([]);
+  const [borrower, setBorrower] = useState<Borrower | null>(null);
+  const [profileUser, setProfileUser] = useState<AppUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [selectedInvestor, setSelectedInvestor] = useState('');
@@ -55,6 +57,11 @@ export default function LoanDetailPage() {
           setLoan(loanData);
           const paymentsData = await getPaymentsByLoan(loanId);
           setPayments(paymentsData);
+          const b = await getBorrower(loanData.borrowerId);
+          setBorrower(b);
+          const uid = b?.userId || loanData.borrowerId;
+          const u = await getUserById(uid);
+          setProfileUser(u);
         }
         setInvestors(investorsData);
       } catch (error) {
@@ -71,14 +78,16 @@ export default function LoanDetailPage() {
   }, [loanId]);
 
   const handleApprove = async () => {
-    if (!loan || !selectedInvestor) {
+    if (!loan) return;
+    const companyFunded = loan.fundingSource === 'company';
+    if (!companyFunded && !selectedInvestor) {
       toast.error('Please select an investor');
       return;
     }
 
     setIsProcessing(true);
     try {
-      await approveLoan(loan.id, selectedInvestor, 'admin', 'Admin User');
+      await approveLoan(loan.id, companyFunded ? null : selectedInvestor, 'admin', 'Admin User');
       const updatedLoan = await getLoan(loanId);
       setLoan(updatedLoan);
       setShowApproveModal(false);
@@ -147,8 +156,15 @@ export default function LoanDetailPage() {
         
         <div className="flex items-start justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{loan.borrowerName}</h1>
-            <p className="text-gray-500">{loan.borrowerPhone}</p>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {resolvePersonDisplayName(profileUser?.fullName, borrower?.fullName, loan.borrowerName)}
+            </h1>
+            <p className="text-gray-500">{borrower?.phone || loan.borrowerPhone}</p>
+            {loan.fundingSource === 'company' && (
+              <span className="mt-2 inline-block text-xs font-medium bg-blue-100 text-blue-800 px-2 py-0.5 rounded">
+                Company-funded loan
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getLoanStatusColor(loan.status)}`}>
@@ -261,38 +277,103 @@ export default function LoanDetailPage() {
             </div>
           </Card>
 
-          {/* KYC Documents */}
-          {(loan.nationalIdImageUrl || loan.selfieUrl) && (
-            <Card className="p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">KYC Documents</h2>
-              <div className="grid grid-cols-2 gap-4">
-                {loan.nationalIdImageUrl && (
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">National ID</p>
-                    <a href={loan.nationalIdImageUrl} target="_blank" rel="noopener noreferrer">
-                      <img 
-                        src={loan.nationalIdImageUrl} 
-                        alt="National ID" 
-                        className="w-full h-48 object-cover rounded-lg border hover:opacity-90 transition-opacity"
-                      />
-                    </a>
-                  </div>
-                )}
-                {loan.selfieUrl && (
-                  <div>
-                    <p className="text-sm text-gray-500 mb-2">Selfie</p>
-                    <a href={loan.selfieUrl} target="_blank" rel="noopener noreferrer">
-                      <img 
-                        src={loan.selfieUrl} 
-                        alt="Selfie" 
-                        className="w-full h-48 object-cover rounded-lg border hover:opacity-90 transition-opacity"
-                      />
-                    </a>
-                  </div>
-                )}
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-1">Borrower profile</h2>
+            <p className="text-xs text-gray-500 mb-4">Signup and KYC fields from the user account and borrower record.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div>
+                <p className="text-gray-500">Full name</p>
+                <p className="font-medium text-gray-900">
+                  {resolvePersonDisplayName(profileUser?.fullName, borrower?.fullName, loan.borrowerName)}
+                </p>
               </div>
-            </Card>
-          )}
+              <div>
+                <p className="text-gray-500">Phone</p>
+                <p className="font-medium text-gray-900">{borrower?.phone || loan.borrowerPhone || '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Email</p>
+                <p className="font-medium text-gray-900">{borrower?.email || profileUser?.email || '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Location</p>
+                <p className="font-medium text-gray-900">{borrower?.location || profileUser?.location || '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">National ID (number)</p>
+                <p className="font-medium text-gray-900">{borrower?.nationalId || profileUser?.nationalId || '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Occupation</p>
+                <p className="font-medium text-gray-900">{borrower?.occupation || loan.occupation || '—'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Monthly income</p>
+                <p className="font-medium text-gray-900">
+                  {borrower?.monthlyIncome != null
+                    ? formatCurrency(borrower.monthlyIncome)
+                    : loan.monthlyIncome
+                      ? formatCurrency(loan.monthlyIncome)
+                      : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-gray-500">KYC verified (account)</p>
+                <p className="font-medium text-gray-900">{profileUser?.kycVerified ? 'Yes' : 'No'}</p>
+              </div>
+              <div>
+                <p className="text-gray-500">Referral code</p>
+                <p className="font-mono font-medium text-gray-900">{borrower?.referralCode || '—'}</p>
+              </div>
+            </div>
+            <div className="mt-4">
+              <Link href={`/borrowers/${loan.borrowerId}`}>
+                <Button variant="outline" size="sm">Open borrower record</Button>
+              </Link>
+            </div>
+          </Card>
+
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">KYC documents</h2>
+            <div className="grid grid-cols-2 gap-4">
+              {borrower?.nationalIdImageUrl || loan.nationalIdImageUrl ? (
+                <div>
+                  <p className="text-sm text-gray-500 mb-2">National ID</p>
+                  <a
+                    href={borrower?.nationalIdImageUrl || loan.nationalIdImageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <img
+                      src={borrower?.nationalIdImageUrl || loan.nationalIdImageUrl}
+                      alt="National ID"
+                      className="w-full h-48 object-cover rounded-lg border hover:opacity-90 transition-opacity"
+                    />
+                  </a>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500 min-h-[12rem]">
+                  National ID image not uploaded
+                </div>
+              )}
+              {borrower?.selfieUrl || loan.selfieUrl ? (
+                <div>
+                  <p className="text-sm text-gray-500 mb-2">Selfie</p>
+                  <a href={borrower?.selfieUrl || loan.selfieUrl} target="_blank" rel="noopener noreferrer">
+                    <img
+                      src={borrower?.selfieUrl || loan.selfieUrl}
+                      alt="Selfie"
+                      className="w-full h-48 object-cover rounded-lg border hover:opacity-90 transition-opacity"
+                    />
+                  </a>
+                </div>
+              ) : (
+                <div className="flex items-center justify-center rounded-lg border border-dashed border-gray-200 p-6 text-center text-sm text-gray-500 min-h-[12rem]">
+                  Selfie not uploaded
+                </div>
+              )}
+            </div>
+          </Card>
 
           {/* Payment History */}
           <Card className="p-6">
@@ -326,13 +407,21 @@ export default function LoanDetailPage() {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Investor Info */}
-          {loan.investorId && (
+          {loan.fundingSource === 'company' && (
+            <Card className="p-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Funding</h2>
+              <p className="text-sm text-gray-600">
+                This loan is funded from <span className="font-medium text-[#0A1F44]">company / CLP capital</span>. No investor is assigned.
+              </p>
+            </Card>
+          )}
+
+          {loan.investorId && loan.fundingSource !== 'company' && (
             <Card className="p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Funded By</h2>
               <div className="flex items-center gap-3">
                 <div className="h-12 w-12 rounded-full bg-[#0A1F44] flex items-center justify-center">
-                  <User className="h-6 w-6 text-white" />
+                  <UserIcon className="h-6 w-6 text-white" />
                 </div>
                 <div>
                   <p className="font-medium text-gray-900">{loan.investorName}</p>
@@ -406,7 +495,7 @@ export default function LoanDetailPage() {
               </Link>
               <Link href={`/borrowers`} className="block">
                 <Button variant="outline" className="w-full justify-start">
-                  <User className="h-4 w-4 mr-2" />
+                  <UserIcon className="h-4 w-4 mr-2" />
                   View Borrower
                 </Button>
               </Link>
@@ -422,37 +511,43 @@ export default function LoanDetailPage() {
         title="Approve Loan"
       >
         <div className="space-y-4">
-          <p className="text-gray-600">
-            Select an investor to fund this loan of {formatCurrency(loan.principalAmount)}.
-          </p>
-          
-          <Select
-            label="Select Investor"
-            value={selectedInvestor}
-            onChange={(e) => setSelectedInvestor(e.target.value)}
-            options={investors
-              .filter(inv => inv.capitalAvailable >= loan.principalAmount)
-              .map(inv => ({
-                value: inv.id,
-                label: `${inv.name} (Available: ${formatCurrency(inv.capitalAvailable)})`
-              }))}
-            placeholder="Choose an investor"
-          />
-
-          {investors.filter(inv => inv.capitalAvailable >= loan.principalAmount).length === 0 && (
-            <p className="text-sm text-red-600">
-              No investors have sufficient capital for this loan amount.
+          {loan.fundingSource === 'company' ? (
+            <p className="text-gray-600">
+              Approve this company-funded loan of {formatCurrency(loan.principalAmount)}. No investor capital will be reserved.
             </p>
+          ) : (
+            <>
+              <p className="text-gray-600">
+                Select an investor to fund this loan of {formatCurrency(loan.principalAmount)}.
+              </p>
+              <Select
+                label="Select Investor"
+                value={selectedInvestor}
+                onChange={(e) => setSelectedInvestor(e.target.value)}
+                options={investors
+                  .filter(inv => inv.capitalAvailable >= loan.principalAmount)
+                  .map(inv => ({
+                    value: inv.id,
+                    label: `${inv.name} (Available: ${formatCurrency(inv.capitalAvailable)})`
+                  }))}
+                placeholder="Choose an investor"
+              />
+              {investors.filter(inv => inv.capitalAvailable >= loan.principalAmount).length === 0 && (
+                <p className="text-sm text-red-600">
+                  No investors have sufficient capital for this loan amount.
+                </p>
+              )}
+            </>
           )}
 
           <div className="flex gap-3 pt-4">
             <Button variant="outline" onClick={() => setShowApproveModal(false)} className="flex-1">
               Cancel
             </Button>
-            <Button 
-              onClick={handleApprove} 
+            <Button
+              onClick={handleApprove}
               isLoading={isProcessing}
-              disabled={!selectedInvestor}
+              disabled={loan.fundingSource !== 'company' && !selectedInvestor}
               className="flex-1"
             >
               Approve Loan

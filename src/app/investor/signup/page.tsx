@@ -93,6 +93,7 @@ export default function InvestorSignupPage() {
         capitalAvailable: 0,
         totalProfitEarned: 0,
         accruedInterest: 0,
+        lastInterestUpdate: Timestamp.now(),
         monthlyProfitBreakdown: {},
         roi: 0,
         createdAt: Timestamp.now(),

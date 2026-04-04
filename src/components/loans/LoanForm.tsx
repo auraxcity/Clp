@@ -28,6 +28,7 @@ const loanSchema = z.object({
   loanProduct: z.enum(['quick_cash', 'business_boost', 'investor_backed_premium']),
   principalAmount: z.string().min(1, 'Amount is required'),
   duration: z.enum(['1', '2', '3', '4']),
+  fundingSource: z.enum(['company', 'investor_funded']),
   purpose: z.string().min(10, 'Please describe the loan purpose'),
   collateralType: z.string().optional(),
   collateralDescription: z.string().optional(),
@@ -70,6 +71,7 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
       loanProduct: 'quick_cash',
       principalAmount: '',
       duration: '1',
+      fundingSource: 'company',
       purpose: '',
       collateralType: '',
       collateralDescription: '',
@@ -193,6 +195,7 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
         weeksLate: 0,
         defaultAlertsCount: 0,
         creditBureauReported: false,
+        fundingSource: data.fundingSource,
         notes: data.notes || undefined,
       };
 
@@ -225,6 +228,24 @@ export function LoanForm({ onSuccess, onCancel, preSelectedBorrowerId }: LoanFor
           error={errors.borrowerId?.message}
           {...register('borrowerId')}
         />
+      </div>
+
+      {/* Funding source */}
+      <div className="rounded-xl border border-gray-200 bg-white p-4">
+        <h3 className="text-lg font-semibold text-gray-900 mb-2">Funding</h3>
+        <p className="text-sm text-gray-500 mb-3">
+          Company-funded loans are approved without allocating investor capital. Investor-funded loans require choosing an investor at approval.
+        </p>
+        <div className="flex flex-col sm:flex-row gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" value="company" {...register('fundingSource')} className="text-[#0A1F44]" />
+            <span className="text-sm font-medium text-gray-800">Company / CLP capital (no investor)</span>
+          </label>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="radio" value="investor_funded" {...register('fundingSource')} className="text-[#0A1F44]" />
+            <span className="text-sm font-medium text-gray-800">Investor-funded</span>
+          </label>
+        </div>
       </div>
 
       {/* Loan Details */}
